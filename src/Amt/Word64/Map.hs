@@ -463,6 +463,7 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
 
+-- FIXME: Can't use `size` here.
 mkBranch :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
 mkBranch (BM 0) _ = empty
 mkBranch (BM bm) ary

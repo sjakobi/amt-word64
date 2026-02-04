@@ -1,0 +1,20 @@
+#!/bin/sh
+
+# Get a list of staged Haskell files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.hs$')
+
+# If no Haskell files are staged, exit
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+echo "Running fourmolu on staged Haskell files..."
+
+# Run fourmolu on each staged Haskell file and re-add to staging
+# We use xargs to handle multiple files efficiently
+echo "$STAGED_FILES" | xargs fourmolu -i
+
+# Re-add the files to staging in case fourmolu changed them
+echo "$STAGED_FILES" | xargs git add
+
+echo "fourmolu finished."

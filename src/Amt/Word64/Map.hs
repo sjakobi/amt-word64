@@ -219,6 +219,8 @@ foldlWithKey' f z (Branch _ ary) = Foldable.foldl' (\acc m -> foldlWithKey' f ac
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
 insert k v m = case m of
+  -- TODO: Since the empty node can only be encountered at the root, we should
+  -- avoid this check for internal nodes.
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k v

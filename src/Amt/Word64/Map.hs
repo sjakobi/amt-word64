@@ -255,6 +255,7 @@ insertWithKey f k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
+-- | Only valid for internal nodes.
 insertWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWithKeyAtShift s f k v m = case m of
@@ -270,6 +271,7 @@ insertWithKeyAtShift s f k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
+-- | Only valid for internal nodes.
 insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertAtShift s k v m = case m of
   Leaf k' v'

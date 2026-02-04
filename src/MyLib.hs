@@ -39,7 +39,10 @@ valid = go 0 0
   go shift prefix (Branch (BM bm) ary) =
     let children = Foldable.toList ary
         bits = [i | i <- [0 .. 63], testBit bm i]
-     in popCount bm == sizeofSmallArray ary
+        n = sizeofSmallArray ary
+        s = size (Branch (BM bm) ary)
+     in popCount bm == n
+          && (s == 0 || s >= 2)
           && all
             (\(i, child) -> go (shift + 6) (prefix .|. (fromIntegral i `Bits.shiftL` shift)) child)
             (zip bits children)
@@ -80,7 +83,21 @@ lookup k = go 0
       Index _ i -> go (shift + 6) (indexSmallArray ary i)
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
-insert k v m = insertAtShift 0 k v m
+insert k v m = case m of
+  Branch (BM 0) _ -> singleton k v
+  Leaf k' v'
+    | k == k' -> Leaf k v
+    | otherwise -> two 0 k v k' v'
+  Branch (BM bm) ary ->
+    case index 0 k (BM bm) of
+      Index _ i ->
+        let child = indexSmallArray ary i
+            newChild = insertAtShift 6 k v child
+         in Branch (BM bm) (updateAt i newChild ary)
+      NoIndex ->
+        let bit = 1 `Bits.shiftL` fromIntegral (k .&. 0x3f)
+            i = popCount (bm .&. (bit - 1))
+         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertAtShift s k v m = case m of
@@ -109,7 +126,7 @@ two shift k1 v1 k2 v2 =
                 if idx1 < idx2
                   then smallArrayFromList [Leaf k1 v1, Leaf k2 v2]
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
-           in Branch (BM bm) ary
+             in Branch (BM bm) ary
         else
           let child = two (shift + 6) k1 v1 k2 v2
               bm = 1 `Bits.shiftL` idx1
@@ -129,38 +146,65 @@ delete k m = go 0 m
          in if null newChild
               then
                 let newBm = bm .&. complement bit
-                 in if newBm == 0
-                      then empty
-                      else Branch (BM newBm) (removeAt i ary)
-              else Branch (BM bm) (updateAt i newChild ary)
+                 in case popCount newBm of
+                      0 -> empty
+                      1 ->
+                        let remainingChild = indexSmallArray ary (if i == 0 then 1 else 0)
+                         in if size remainingChild == 1 then remainingChild else Branch (BM newBm) (removeAt i ary)
+                      _ -> Branch (BM newBm) (removeAt i ary)
+              else
+                if size newChild == 1 && popCount bm == 1
+                  then newChild
+                  else Branch (BM bm) (updateAt i newChild ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
-union m1 m2 = go 0 m1 m2
- where
-  go shift mm1 mm2 = case (mm1, mm2) of
-    (Leaf k1 v1, _) -> insertAtShift shift k1 v1 mm2
-    (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 mm1
-    (Branch (BM 0) _, _) -> mm2
-    (_, Branch (BM 0) _) -> mm1
-    (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
-      let newBm = bm1 .|. bm2
-          bits = [b | b <- [0 .. 63], testBit newBm b]
-          newAryList = flip map bits $ \b ->
-            let bit = 1 `Bits.shiftL` b
-                mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
-                mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
-             in case (mIndex1, mIndex2) of
-                  (Just i1, Just i2) -> go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
-                  (Just i1, Nothing) -> indexSmallArray ary1 i1
-                  (Nothing, Just i2) -> indexSmallArray ary2 i2
-                  (Nothing, Nothing) -> error "union: impossible"
-       in Branch (BM newBm) (smallArrayFromList newAryList)
+union m1 m2 = case (m1, m2) of
+  (Branch (BM 0) _, _) -> m2
+  (_, Branch (BM 0) _) -> m1
+  (Leaf k1 v1, _) -> insert k1 v1 m2
+  (_, Leaf k2 v2) -> insertIfNotExists k2 v2 m1
+  (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
+    let newBm = bm1 .|. bm2
+        bits = [b | b <- [0 .. 63], testBit newBm b]
+        newAryList = flip map bits $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
+              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+           in case (mIndex1, mIndex2) of
+                (Just i1, Just i2) -> unionAtShift 6 (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                (Just i1, Nothing) -> indexSmallArray ary1 i1
+                (Nothing, Just i2) -> indexSmallArray ary2 i2
+                (Nothing, Nothing) -> error "union: impossible"
+     in Branch (BM newBm) (smallArrayFromList newAryList)
+
+unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShift shift m1 m2 = case (m1, m2) of
+  (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
+  (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
+  (Branch (BM 0) _, _) -> m2
+  (_, Branch (BM 0) _) -> m1
+  (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
+    let newBm = bm1 .|. bm2
+        bits = [b | b <- [0 .. 63], testBit newBm b]
+        newAryList = flip map bits $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
+              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+           in case (mIndex1, mIndex2) of
+                (Just i1, Just i2) -> unionAtShift (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                (Just i1, Nothing) -> indexSmallArray ary1 i1
+                (Nothing, Just i2) -> indexSmallArray ary2 i2
+                (Nothing, Nothing) -> error "union: impossible"
+     in Branch (BM newBm) (smallArrayFromList newAryList)
+
+insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
+insertIfNotExists k v m = insertIfNotExistsAtShift 0 k v m
 
 insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExistsAtShift shift k v m = case m of
   Leaf k' v'
     | k == k' -> m
-    | otherwise -> two shift k v k' v' -- Note: v2 is kept, but here v is the new one and k' v' is existing. Wait, if k==k' we want to keep k'v'. split here would be used if they collide at this level.
+    | otherwise -> two shift k v k' v'
   Branch (BM bm) ary ->
     case index shift k (BM bm) of
       Index _ i ->

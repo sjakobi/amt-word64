@@ -3,10 +3,12 @@ module MyLib
   , empty
   , insert
   , lookup
+  , valid
   ) where
 
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
+import Data.Foldable (toList)
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import Prelude hiding (lookup)
@@ -20,6 +22,20 @@ newtype Bitmap = BM Word64
 data Index = NoIndex | Index !Bitmap !Int
 
 type Shift = Int
+
+valid :: Word64Map a -> Bool
+valid = go 0 0
+ where
+  go shift prefix (Leaf k _) =
+    let mask = if shift >= 64 then complement 0 else (1 `Bits.shiftL` shift) - 1
+     in (k .&. mask) == prefix
+  go shift prefix (Branch (BM bm) ary) =
+    let children = toList ary
+        bits = [i | i <- [0 .. 63], testBit bm i]
+     in popCount bm == sizeofSmallArray ary
+          && all
+            (\(i, child) -> go (shift + 6) (prefix .|. (fromIntegral i `Bits.shiftL` shift)) child)
+            (zip bits children)
 
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =

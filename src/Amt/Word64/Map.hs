@@ -113,9 +113,10 @@ instance Traversable Word64Map where
 
 newtype Bitmap = BM Word64
 
-data Index = Index !Bitmap !Int !PrefixPresence
+data Index = Index !Bitmap !Int !BitMatch
 
-data PrefixPresence = Absent | Present
+-- | Does the Bitmap contain the Word64 at the given Shift?
+data BitMatch = NoMatch | Match
 
 type Shift = Int
 
@@ -153,9 +154,8 @@ index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =
   let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
       i = popCount (bm .&. (bit - 1))
-   in if bm .&. bit == 0
-        then NoIndex
-        else Index (BM bit) i
+      match = if bm .&. bit == 0 then NoMatch else Match
+   in Index (BM bit) i match
 {-# INLINE index #-}
 
 empty :: Word64Map a
@@ -184,8 +184,8 @@ lookupAtShift shift k = go shift
     | otherwise = Nothing
   go s (Branch (BM bm) ary) =
     case index s k (BM bm) of
-      NoIndex -> Nothing
-      Index _ i -> go (s + 6) (indexSmallArray ary i)
+      Index _ _ NoMatch -> Nothing
+      Index _ i Match -> go (s + 6) (indexSmallArray ary i)
 
 member :: Word64 -> Word64Map a -> Bool
 member k m = case lookup k m of
@@ -219,22 +219,18 @@ foldlWithKey' f z (Branch _ ary) = Foldable.foldl' (\acc m -> foldlWithKey' f ac
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
 insert k v m = case m of
-  -- TODO: Since the empty node can only be encountered at the root, we should
-  -- avoid this check for internal nodes.
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two 0 k v k' v'
   Branch (BM bm) ary ->
     case index 0 k (BM bm) of
-      Index _ i ->
+      Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertAtShift 6 k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      NoIndex ->
-        let bit = 1 `Bits.shiftL` fromIntegral (k .&. 0x3f)
-            i = popCount (bm .&. (bit - 1))
-         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
@@ -248,14 +244,12 @@ insertWithKey f k v m = case m of
     | otherwise -> two 0 k v k' v'
   Branch (BM bm) ary ->
     case index 0 k (BM bm) of
-      Index _ i ->
+      Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertWithKeyAtShift 6 f k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      NoIndex ->
-        let bit = 1 `Bits.shiftL` fromIntegral (k .&. 0x3f)
-            i = popCount (bm .&. (bit - 1))
-         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 insertWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
@@ -265,14 +259,12 @@ insertWithKeyAtShift s f k v m = case m of
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i ->
+      Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertWithKeyAtShift (s + 6) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      NoIndex ->
-        let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` s) .&. 0x3f)
-            i = popCount (bm .&. (bit - 1))
-         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertAtShift s k v m = case m of
@@ -281,14 +273,12 @@ insertAtShift s k v m = case m of
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i ->
+      Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (s + 6) k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      NoIndex ->
-        let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` s) .&. 0x3f)
-            i = popCount (bm .&. (bit - 1))
-         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two shift k1 v1 k2 v2 =
@@ -317,24 +307,15 @@ deleteAtShift shift k m = go shift m
   go _ leaf@(Leaf _ _) = leaf
   go s (Branch (BM bm) ary) =
     case index s k (BM bm) of
-      NoIndex -> Branch (BM bm) ary
-      Index (BM bit) i ->
+      Index _ _ NoMatch -> Branch (BM bm) ary
+      Index (BM bit) i Match ->
         let child = indexSmallArray ary i
             newChild = go (s + 6) child
          in if null newChild
               then
                 let newBm = bm .&. complement bit
-                 in case popCount newBm of
-                      0 -> empty
-                      1 ->
-                        let remainingChild = indexSmallArray ary (if i == 0 then 1 else 0)
-                         in case remainingChild of
-                              Leaf _ _ -> remainingChild
-                              _ -> Branch (BM newBm) (removeAt i ary)
-                      _ -> Branch (BM newBm) (removeAt i ary)
-              else case newChild of
-                Leaf _ _ | popCount bm == 1 -> newChild
-                _ -> Branch (BM bm) (updateAt i newChild ary)
+                 in mkBranch (BM newBm) (removeAt i ary)
+              else mkBranch (BM bm) (updateAt i newChild ary)
 
 adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f = adjustWithKey (\_ x -> f x)
@@ -347,8 +328,8 @@ adjustWithKey f k m = go 0 m
     | otherwise = Leaf k' v
   go shift (Branch (BM bm) ary) =
     case index shift k (BM bm) of
-      NoIndex -> Branch (BM bm) ary
-      Index _ i ->
+      Index _ _ NoMatch -> Branch (BM bm) ary
+      Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = go (shift + 6) child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -397,7 +378,7 @@ unionAtShift shift m1 m2 = case (m1, m2) of
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "union: impossible"
-     in Branch (BM newBm) (smallArrayFromList newAryList)
+     in mkBranch (BM newBm) (smallArrayFromList newAryList)
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith f = unionWithKey (\_ x y -> f x y)
@@ -430,7 +411,7 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "unionWithKey: impossible"
-     in Branch (BM newBm) (smallArrayFromList newAryList)
+     in mkBranch (BM newBm) (smallArrayFromList newAryList)
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExists k v m = insertIfNotExistsAtShift 0 k v m
@@ -442,14 +423,12 @@ insertIfNotExistsAtShift shift k v m = case m of
     | otherwise -> two shift k v k' v'
   Branch (BM bm) ary ->
     case index shift k (BM bm) of
-      Index _ i ->
+      Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertIfNotExistsAtShift (shift + 6) k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      NoIndex ->
-        let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
-            i = popCount (bm .&. (bit - 1))
-         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 fromList :: [(Word64, a)] -> Word64Map a
 fromList = Foldable.foldl' (\m (k, v) -> insert k v m) empty
@@ -487,9 +466,7 @@ mkBranch (BM 0) _ = empty
 mkBranch (BM bm) ary
   | popCount bm == 1 =
       let child = indexSmallArray ary 0
-       in case child of
-            Leaf _ _ -> child
-            _ -> Branch (BM bm) ary
+       in if size child == 1 then child else Branch (BM bm) ary
   | otherwise = Branch (BM bm) ary
 
 mergeWithKey ::

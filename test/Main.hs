@@ -1,7 +1,8 @@
 module Main (main) where
 
 import Amt.Word64.Map
-  ( Word64Map
+  ( InvariantViolation (..)
+  , Word64Map
   , adjust
   , adjustWithKey
   , alter
@@ -68,7 +69,7 @@ tests =
     "Word64Map tests"
     [ testGroup
         "empty"
-        [ testProperty "valid invariant" $ valid (empty @Int)
+        [ testProperty "valid invariant" $ checkValid (empty @Int)
         ]
     , testGroup
         "singleton"
@@ -291,20 +292,25 @@ tests =
 sortToList :: Word64Map a -> [(Word64, a)]
 sortToList = L.sortOn fst . toList
 
+checkValid :: Word64Map a -> Property
+checkValid m = case valid m of
+  Nothing -> property True
+  Just err -> counterexample (show err) False
+
 prop_singleton_model :: Word64 -> Int -> Property
 prop_singleton_model k v =
   sortToList (singleton k v) === Map.toList (Map.singleton k v)
 
-prop_singleton_valid :: Word64 -> Int -> Bool
-prop_singleton_valid k v = valid (singleton k v)
+prop_singleton_valid :: Word64 -> Int -> Property
+prop_singleton_valid k v = checkValid (singleton k v)
 
 prop_insert_model :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_insert_model entries k v =
   sortToList (insert k v (fromList entries))
     === Map.toList (Map.insert k v (Map.fromList entries))
 
-prop_insert_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
-prop_insert_valid entries k v = valid (insert k v (fromList entries))
+prop_insert_valid :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_insert_valid entries k v = checkValid (insert k v (fromList entries))
 
 prop_delete_model :: [(Word64, Int)] -> [Word64] -> Property
 prop_delete_model entries ks =
@@ -312,9 +318,9 @@ prop_delete_model entries ks =
       refMap = foldl (\m k -> Map.delete k m) (Map.fromList entries) ks
    in sortToList myMap === Map.toList refMap
 
-prop_delete_valid :: [(Word64, Int)] -> [Word64] -> Bool
+prop_delete_valid :: [(Word64, Int)] -> [Word64] -> Property
 prop_delete_valid entries ks =
-  valid (foldl (\m k -> delete k m) (fromList entries) ks)
+  checkValid (foldl (\m k -> delete k m) (fromList entries) ks)
 
 prop_union_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_union_model e1 e2 =
@@ -326,15 +332,15 @@ prop_union_model e1 e2 =
       refUnion = Map.union ref1 ref2
    in sortToList myUnion === Map.toList refUnion
 
-prop_union_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
-prop_union_valid e1 e2 = valid (union (fromList e1) (fromList e2))
+prop_union_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_union_valid e1 e2 = checkValid (union (fromList e1) (fromList e2))
 
 prop_fromList_model :: [(Word64, Int)] -> Property
 prop_fromList_model entries =
   sortToList (fromList entries) === Map.toList (Map.fromList entries)
 
-prop_fromList_valid :: [(Word64, Int)] -> Bool
-prop_fromList_valid entries = valid (fromList entries)
+prop_fromList_valid :: [(Word64, Int)] -> Property
+prop_fromList_valid entries = checkValid (fromList entries)
 
 prop_toList_model :: [(Word64, Int)] -> Property
 prop_toList_model entries =
@@ -428,10 +434,10 @@ prop_insertWith_model entries k v =
       ref = Map.fromList entries
    in sortToList (insertWith f k v m) === Map.toList (Map.insertWith f k v ref)
 
-prop_insertWith_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
+prop_insertWith_valid :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_insertWith_valid entries k v =
   let f x y = x + y
-   in valid (insertWith f k v (fromList entries))
+   in checkValid (insertWith f k v (fromList entries))
 
 prop_adjust_model :: [(Word64, Int)] -> Word64 -> Property
 prop_adjust_model entries k =
@@ -440,10 +446,10 @@ prop_adjust_model entries k =
       ref = Map.fromList entries
    in sortToList (adjust f k m) === Map.toList (Map.adjust f k ref)
 
-prop_adjust_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_adjust_valid :: [(Word64, Int)] -> Word64 -> Property
 prop_adjust_valid entries k =
   let f x = x + 1
-   in valid (adjust f k (fromList entries))
+   in checkValid (adjust f k (fromList entries))
 
 prop_update_model :: [(Word64, Int)] -> Word64 -> Property
 prop_update_model entries k =
@@ -452,10 +458,10 @@ prop_update_model entries k =
       ref = Map.fromList entries
    in sortToList (update f k m) === Map.toList (Map.update f k ref)
 
-prop_update_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_update_valid :: [(Word64, Int)] -> Word64 -> Property
 prop_update_valid entries k =
   let f x = if even x then Just (x + 1) else Nothing
-   in valid (update f k (fromList entries))
+   in checkValid (update f k (fromList entries))
 
 prop_alter_model :: [(Word64, Int)] -> Word64 -> Property
 prop_alter_model entries k =
@@ -465,11 +471,11 @@ prop_alter_model entries k =
       ref = Map.fromList entries
    in sortToList (alter f k m) === Map.toList (Map.alter f k ref)
 
-prop_alter_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_alter_valid :: [(Word64, Int)] -> Word64 -> Property
 prop_alter_valid entries k =
   let f Nothing = Just 1
       f (Just x) = if even x then Just (x + 1) else Nothing
-   in valid (alter f k (fromList entries))
+   in checkValid (alter f k (fromList entries))
 
 prop_map_model :: [(Word64, Int)] -> Property
 prop_map_model entries =
@@ -494,10 +500,10 @@ prop_unionWith_model e1 e2 =
       ref2 = Map.fromList e2
    in sortToList (unionWith f m1 m2) === Map.toList (Map.unionWith f ref1 ref2)
 
-prop_unionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_unionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_unionWith_valid e1 e2 =
   let f x y = x + y
-   in valid (unionWith f (fromList e1) (fromList e2))
+   in checkValid (unionWith f (fromList e1) (fromList e2))
 
 prop_difference_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_difference_model e1 e2 =
@@ -507,8 +513,8 @@ prop_difference_model e1 e2 =
       ref2 = Map.fromList e2
    in sortToList (difference m1 m2) === Map.toList (Map.difference ref1 ref2)
 
-prop_difference_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
-prop_difference_valid e1 e2 = valid (difference (fromList e1) (fromList e2))
+prop_difference_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_difference_valid e1 e2 = checkValid (difference (fromList e1) (fromList e2))
 
 prop_intersection_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_intersection_model e1 e2 =
@@ -518,8 +524,8 @@ prop_intersection_model e1 e2 =
       ref2 = Map.fromList e2
    in sortToList (intersection m1 m2) === Map.toList (Map.intersection ref1 ref2)
 
-prop_intersection_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
-prop_intersection_valid e1 e2 = valid (intersection (fromList e1) (fromList e2))
+prop_intersection_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersection_valid e1 e2 = checkValid (intersection (fromList e1) (fromList e2))
 
 prop_filter_model :: [(Word64, Int)] -> Property
 prop_filter_model entries =
@@ -528,8 +534,8 @@ prop_filter_model entries =
       ref = Map.fromList entries
    in sortToList (filter f m) === Map.toList (Map.filter f ref)
 
-prop_filter_valid :: [(Word64, Int)] -> Bool
-prop_filter_valid entries = valid (filter even (fromList entries))
+prop_filter_valid :: [(Word64, Int)] -> Property
+prop_filter_valid entries = checkValid (filter even (fromList entries))
 
 prop_partition_model :: [(Word64, Int)] -> Property
 prop_partition_model entries =
@@ -540,10 +546,10 @@ prop_partition_model entries =
       (lRef, rRef) = Map.partition f ref
    in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
 
-prop_partition_valid :: [(Word64, Int)] -> Bool
+prop_partition_valid :: [(Word64, Int)] -> Property
 prop_partition_valid entries =
   let (l, r) = partition even (fromList entries)
-   in valid l && valid r
+   in checkValid l .&&. checkValid r
 
 prop_mapMaybe_model :: [(Word64, Int)] -> Property
 prop_mapMaybe_model entries =
@@ -552,10 +558,10 @@ prop_mapMaybe_model entries =
       ref = Map.fromList entries
    in sortToList (mapMaybe f m) === Map.toList (Map.mapMaybe f ref)
 
-prop_mapMaybe_valid :: [(Word64, Int)] -> Bool
+prop_mapMaybe_valid :: [(Word64, Int)] -> Property
 prop_mapMaybe_valid entries =
   let f x = if even x then Just (x `div` 2) else Nothing
-   in valid (mapMaybe f (fromList entries))
+   in checkValid (mapMaybe f (fromList entries))
 
 prop_mapEither_model :: [(Word64, Int)] -> Property
 prop_mapEither_model entries =
@@ -566,11 +572,11 @@ prop_mapEither_model entries =
       (lRef, rRef) = Map.mapEither f ref
    in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
 
-prop_mapEither_valid :: [(Word64, Int)] -> Bool
+prop_mapEither_valid :: [(Word64, Int)] -> Property
 prop_mapEither_valid entries =
   let f x = if even x then Left (x `div` 2) else Right (x * 2)
       (l, r) = mapEither f (fromList entries)
-   in valid l && valid r
+   in checkValid l .&&. checkValid r
 
 prop_isSubmapOf_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_isSubmapOf_model e1 e2 =
@@ -599,10 +605,10 @@ prop_insertWithKey_model entries k v =
       ref = Map.fromList entries
    in sortToList (insertWithKey f k v m) === Map.toList (Map.insertWithKey f k v ref)
 
-prop_insertWithKey_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
+prop_insertWithKey_valid :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_insertWithKey_valid entries k v =
   let f k' new old = fromIntegral k' + new + old
-   in valid (insertWithKey f k v (fromList entries))
+   in checkValid (insertWithKey f k v (fromList entries))
 
 prop_adjustWithKey_model :: [(Word64, Int)] -> Word64 -> Property
 prop_adjustWithKey_model entries k =
@@ -611,10 +617,10 @@ prop_adjustWithKey_model entries k =
       ref = Map.fromList entries
    in sortToList (adjustWithKey f k m) === Map.toList (Map.adjustWithKey f k ref)
 
-prop_adjustWithKey_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_adjustWithKey_valid :: [(Word64, Int)] -> Word64 -> Property
 prop_adjustWithKey_valid entries k =
   let f k' x = fromIntegral k' + x
-   in valid (adjustWithKey f k (fromList entries))
+   in checkValid (adjustWithKey f k (fromList entries))
 
 prop_updateWithKey_model :: [(Word64, Int)] -> Word64 -> Property
 prop_updateWithKey_model entries k =
@@ -623,16 +629,16 @@ prop_updateWithKey_model entries k =
       ref = Map.fromList entries
    in sortToList (updateWithKey f k m) === Map.toList (Map.updateWithKey f k ref)
 
-prop_updateWithKey_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_updateWithKey_valid :: [(Word64, Int)] -> Word64 -> Property
 prop_updateWithKey_valid entries k =
   let f k' x = if even (k' + fromIntegral x) then Just (x + 1) else Nothing
-   in valid (updateWithKey f k (fromList entries))
+   in checkValid (updateWithKey f k (fromList entries))
 
-prop_map_valid :: [(Word64, Int)] -> Bool
-prop_map_valid entries = valid (map (+ 1) (fromList entries))
+prop_map_valid :: [(Word64, Int)] -> Property
+prop_map_valid entries = checkValid (map (+ 1) (fromList entries))
 
-prop_mapWithKey_valid :: [(Word64, Int)] -> Bool
-prop_mapWithKey_valid entries = valid (mapWithKey (\k v -> fromIntegral k + v) (fromList entries))
+prop_mapWithKey_valid :: [(Word64, Int)] -> Property
+prop_mapWithKey_valid entries = checkValid (mapWithKey (\k v -> fromIntegral k + v) (fromList entries))
 
 prop_unionWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_unionWithKey_model e1 e2 =
@@ -643,17 +649,17 @@ prop_unionWithKey_model e1 e2 =
       ref2 = Map.fromList e2
    in sortToList (unionWithKey f m1 m2) === Map.toList (Map.unionWithKey f ref1 ref2)
 
-prop_unionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_unionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_unionWithKey_valid e1 e2 =
   let f k x y = fromIntegral k + x + y
-   in valid (unionWithKey f (fromList e1) (fromList e2))
+   in checkValid (unionWithKey f (fromList e1) (fromList e2))
 
-prop_mergeWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_mergeWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_mergeWithKey_valid e1 e2 =
   let f k x y = if even (k + fromIntegral x + fromIntegral y) then Just (x + y) else Nothing
       g1 = filter (const True)
       g2 = const empty
-   in valid (mergeWithKey f g1 g2 (fromList e1) (fromList e2))
+   in checkValid (mergeWithKey f g1 g2 (fromList e1) (fromList e2))
 
 prop_differenceWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_differenceWith_model e1 e2 =
@@ -665,10 +671,10 @@ prop_differenceWith_model e1 e2 =
    in sortToList (differenceWith f m1 m2)
         === Map.toList (Map.differenceWith f ref1 ref2)
 
-prop_differenceWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_differenceWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_differenceWith_valid e1 e2 =
   let f x y = if even (x + y) then Just (x + y) else Nothing
-   in valid (differenceWith f (fromList e1) (fromList e2))
+   in checkValid (differenceWith f (fromList e1) (fromList e2))
 
 prop_intersectionWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_intersectionWith_model e1 e2 =
@@ -680,10 +686,10 @@ prop_intersectionWith_model e1 e2 =
    in sortToList (intersectionWith f m1 m2)
         === Map.toList (Map.intersectionWith f ref1 ref2)
 
-prop_intersectionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_intersectionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_intersectionWith_valid e1 e2 =
   let f x y = x + y
-   in valid (intersectionWith f (fromList e1) (fromList e2))
+   in checkValid (intersectionWith f (fromList e1) (fromList e2))
 
 prop_intersectionWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_intersectionWithKey_model e1 e2 =
@@ -695,10 +701,10 @@ prop_intersectionWithKey_model e1 e2 =
    in sortToList (intersectionWithKey f m1 m2)
         === Map.toList (Map.intersectionWithKey f ref1 ref2)
 
-prop_intersectionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_intersectionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_intersectionWithKey_valid e1 e2 =
   let f k x y = fromIntegral k + x + y
-   in valid (intersectionWithKey f (fromList e1) (fromList e2))
+   in checkValid (intersectionWithKey f (fromList e1) (fromList e2))
 
 prop_filterWithKey_model :: [(Word64, Int)] -> Property
 prop_filterWithKey_model entries =
@@ -707,10 +713,10 @@ prop_filterWithKey_model entries =
       ref = Map.fromList entries
    in sortToList (filterWithKey f m) === Map.toList (Map.filterWithKey f ref)
 
-prop_filterWithKey_valid :: [(Word64, Int)] -> Bool
+prop_filterWithKey_valid :: [(Word64, Int)] -> Property
 prop_filterWithKey_valid entries =
   let f k v = even (k + fromIntegral v)
-   in valid (filterWithKey f (fromList entries))
+   in checkValid (filterWithKey f (fromList entries))
 
 prop_partitionWithKey_model :: [(Word64, Int)] -> Property
 prop_partitionWithKey_model entries =
@@ -721,11 +727,11 @@ prop_partitionWithKey_model entries =
       (lRef, rRef) = Map.partitionWithKey f ref
    in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
 
-prop_partitionWithKey_valid :: [(Word64, Int)] -> Bool
+prop_partitionWithKey_valid :: [(Word64, Int)] -> Property
 prop_partitionWithKey_valid entries =
   let f k v = even (k + fromIntegral v)
       (l, r) = partitionWithKey f (fromList entries)
-   in valid l && valid r
+   in checkValid l .&&. checkValid r
 
 prop_mapMaybeWithKey_model :: [(Word64, Int)] -> Property
 prop_mapMaybeWithKey_model entries =
@@ -734,10 +740,10 @@ prop_mapMaybeWithKey_model entries =
       ref = Map.fromList entries
    in sortToList (mapMaybeWithKey f m) === Map.toList (Map.mapMaybeWithKey f ref)
 
-prop_mapMaybeWithKey_valid :: [(Word64, Int)] -> Bool
+prop_mapMaybeWithKey_valid :: [(Word64, Int)] -> Property
 prop_mapMaybeWithKey_valid entries =
   let f k v = if even (k + fromIntegral v) then Just (v + 1) else Nothing
-   in valid (mapMaybeWithKey f (fromList entries))
+   in checkValid (mapMaybeWithKey f (fromList entries))
 
 prop_mapEitherWithKey_model :: [(Word64, Int)] -> Property
 prop_mapEitherWithKey_model entries =
@@ -748,8 +754,8 @@ prop_mapEitherWithKey_model entries =
       (lRef, rRef) = Map.mapEitherWithKey f ref
    in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
 
-prop_mapEitherWithKey_valid :: [(Word64, Int)] -> Bool
+prop_mapEitherWithKey_valid :: [(Word64, Int)] -> Property
 prop_mapEitherWithKey_valid entries =
   let f k v = if even (k + fromIntegral v) then Left (v + 1) else Right (v + 2)
       (l, r) = mapEitherWithKey f (fromList entries)
-   in valid l && valid r
+   in checkValid l .&&. checkValid r

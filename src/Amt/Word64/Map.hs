@@ -472,6 +472,7 @@ mkBranch (BM bm) ary
        in if size child == 1 then child else Branch (BM bm) ary
   | otherwise = Branch (BM bm) ary
 
+-- FIXME: Buggy
 mergeWithKey ::
   (Word64 -> a -> b -> Maybe c) ->
   (Word64Map a -> Word64Map c) ->

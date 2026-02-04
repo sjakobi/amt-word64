@@ -55,22 +55,23 @@ import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import Prelude hiding (filter, lookup, map, null)
 
--- | An array-mapped trie with 64-bit word keys.
---
--- === Invariants
---
--- 1. __Canonical empty__: The empty map is represented by a 'Branch' with an
---    empty bitmap.
---
--- 2. __No redundant branches__: A 'Branch' must have either exactly zero
---    children (only if it is the root) or at least two children. If a branch
---    would have only one child, that child must be collapsed upwards.
---
--- 3. __Bitmap consistency__: The number of set bits in the 'Bitmap' must
---    exactly match the size of the 'SmallArray'.
---
--- 4. __Prefix consistency__: For any node at 'Shift' @s@, all keys in its
---    subtree must share the same prefix for the bits more significant than @s@.
+{- | An array-mapped trie with 64-bit word keys.
+
+=== Invariants
+
+1. __Canonical empty__: The empty map is represented by a 'Branch' with an
+   empty bitmap.
+
+2. __No redundant branches__: A 'Branch' must have either exactly zero
+   children (only if it is the root) or at least two children. If a branch
+   would have only one child, that child must be collapsed upwards.
+
+3. __Bitmap consistency__: The number of set bits in the 'Bitmap' must
+   exactly match the size of the 'SmallArray'.
+
+4. __Prefix consistency__: For any node at 'Shift' @s@, all keys in its
+   subtree must share the same prefix for the bits more significant than @s@.
+-}
 data Word64Map a
   = Branch !Bitmap !(SmallArray (Word64Map a))
   | Leaf !Word64 a
@@ -218,7 +219,8 @@ insertWithKey f k v m = case m of
             i = popCount (bm .&. (bit - 1))
          in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
-insertWithKeyAtShift :: Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+insertWithKeyAtShift ::
+  Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWithKeyAtShift s f k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
@@ -261,7 +263,7 @@ two shift k1 v1 k2 v2 =
                 if idx1 < idx2
                   then smallArrayFromList [Leaf k1 v1, Leaf k2 v2]
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
-             in Branch (BM bm) ary
+           in Branch (BM bm) ary
         else
           let child = two (shift + 6) k1 v1 k2 v2
               bm = 1 `Bits.shiftL` idx1
@@ -472,7 +474,13 @@ mkBranch (BM bm) ary
        in if size child == 1 then child else Branch (BM bm) ary
   | otherwise = Branch (BM bm) ary
 
-mergeWithKey :: (Word64 -> a -> b -> Maybe c) -> (Word64Map a -> Word64Map c) -> (Word64Map b -> Word64Map c) -> Word64Map a -> Word64Map b -> Word64Map c
+mergeWithKey ::
+  (Word64 -> a -> b -> Maybe c) ->
+  (Word64Map a -> Word64Map c) ->
+  (Word64Map b -> Word64Map c) ->
+  Word64Map a ->
+  Word64Map b ->
+  Word64Map c
 mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2

@@ -5,49 +5,49 @@ import Data.Map.Strict qualified as Map
 import Data.Word (Word64)
 import MyLib
   ( Word64Map
-  , assocs
   , adjust
   , adjustWithKey
   , alter
+  , assocs
   , delete
+  , difference
+  , differenceWith
   , elems
   , empty
+  , filter
+  , filterWithKey
   , findWithDefault
   , foldlWithKey'
   , foldrWithKey
-  , difference
-  , differenceWith
-  , intersection
-  , intersectionWith
-  , intersectionWithKey
-  , filter
-  , filterWithKey
-  , partition
-  , partitionWithKey
-  , mapMaybe
-  , mapMaybeWithKey
-  , mapEither
-  , mapEitherWithKey
-  , isSubmapOf
-  , isSubmapOfBy
   , fromList
   , insert
   , insertWith
   , insertWithKey
+  , intersection
+  , intersectionWith
+  , intersectionWithKey
+  , isSubmapOf
+  , isSubmapOfBy
   , keys
   , lookup
   , map
+  , mapEither
+  , mapEitherWithKey
+  , mapMaybe
+  , mapMaybeWithKey
   , mapWithKey
   , member
+  , mergeWithKey
   , notMember
   , null
+  , partition
+  , partitionWithKey
   , singleton
   , size
   , toList
   , union
   , unionWith
   , unionWithKey
-  , mergeWithKey
   , update
   , updateWithKey
   , valid
@@ -63,131 +63,166 @@ tests :: TestTree
 tests =
   testGroup
     "Word64Map tests"
-    [ testGroup "empty"
+    [ testGroup
+        "empty"
         [ testProperty "valid invariant" $ valid (empty @Int)
         ]
-    , testGroup "singleton"
+    , testGroup
+        "singleton"
         [ testProperty "matches Data.Map" prop_singleton_model
         , testProperty "valid invariant" prop_singleton_valid
         ]
-    , testGroup "insert"
+    , testGroup
+        "insert"
         [ testProperty "matches Data.Map" prop_insert_model
         , testProperty "valid invariant" prop_insert_valid
         ]
-    , testGroup "delete"
+    , testGroup
+        "delete"
         [ testProperty "matches Data.Map" prop_delete_model
         , testProperty "valid invariant" prop_delete_valid
         ]
-    , testGroup "union"
+    , testGroup
+        "union"
         [ testProperty "matches Data.Map" prop_union_model
         , testProperty "valid invariant" prop_union_valid
         ]
-    , testGroup "fromList"
+    , testGroup
+        "fromList"
         [ testProperty "matches Data.Map" prop_fromList_model
         , testProperty "valid invariant" prop_fromList_valid
         ]
-    , testGroup "toList"
+    , testGroup
+        "toList"
         [ testProperty "matches Data.Map" prop_toList_model
         ]
-    , testGroup "null"
+    , testGroup
+        "null"
         [ testProperty "matches Data.Map" prop_null_model
         ]
-    , testGroup "size"
+    , testGroup
+        "size"
         [ testProperty "matches Data.Map" prop_size_model
         ]
-    , testGroup "lookup"
+    , testGroup
+        "lookup"
         [ testProperty "matches Data.Map" prop_lookup_model
         ]
-    , testGroup "member"
+    , testGroup
+        "member"
         [ testProperty "matches Data.Map" prop_member_model
         ]
-    , testGroup "notMember"
+    , testGroup
+        "notMember"
         [ testProperty "matches Data.Map" prop_notMember_model
         ]
-    , testGroup "findWithDefault"
+    , testGroup
+        "findWithDefault"
         [ testProperty "matches Data.Map" prop_findWithDefault_model
         ]
-    , testGroup "keys"
+    , testGroup
+        "keys"
         [ testProperty "matches toList" prop_keys_model
         ]
-    , testGroup "elems"
+    , testGroup
+        "elems"
         [ testProperty "matches toList" prop_elems_model
         ]
-    , testGroup "assocs"
+    , testGroup
+        "assocs"
         [ testProperty "matches toList" prop_assocs_model
         ]
-    , testGroup "Functor"
+    , testGroup
+        "Functor"
         [ testProperty "fmap matches Data.Map" prop_fmap_model
         ]
-    , testGroup "Foldable"
+    , testGroup
+        "Foldable"
         [ testProperty "foldr matches toList" prop_foldr_model
         , testProperty "length matches size" prop_length_model
         ]
-{-
-    , testGroup "Traversable"
-        [ testProperty "traverse matches Data.Map" prop_traverse_model
-        ]
--}
-    , testGroup "foldrWithKey"
+    , {-
+          , testGroup "Traversable"
+              [ testProperty "traverse matches Data.Map" prop_traverse_model
+              ]
+      -}
+      testGroup
+        "foldrWithKey"
         [ testProperty "visits all elements" prop_foldrWithKey_model
         ]
-    , testGroup "foldlWithKey'"
+    , testGroup
+        "foldlWithKey'"
         [ testProperty "visits all elements" prop_foldlWithKey_model
         ]
-    , testGroup "insertWith"
+    , testGroup
+        "insertWith"
         [ testProperty "matches Data.Map" prop_insertWith_model
         , testProperty "valid invariant" prop_insertWith_valid
         ]
-    , testGroup "adjust"
+    , testGroup
+        "adjust"
         [ testProperty "matches Data.Map" prop_adjust_model
         , testProperty "valid invariant" prop_adjust_valid
         ]
-    , testGroup "update"
+    , testGroup
+        "update"
         [ testProperty "matches Data.Map" prop_update_model
         , testProperty "valid invariant" prop_update_valid
         ]
-    , testGroup "alter"
+    , testGroup
+        "alter"
         [ testProperty "matches Data.Map" prop_alter_model
         , testProperty "valid invariant" prop_alter_valid
         ]
-    , testGroup "map"
+    , testGroup
+        "map"
         [ testProperty "matches Data.Map" prop_map_model
         ]
-    , testGroup "mapWithKey"
+    , testGroup
+        "mapWithKey"
         [ testProperty "matches Data.Map" prop_mapWithKey_model
         ]
-    , testGroup "unionWith"
+    , testGroup
+        "unionWith"
         [ testProperty "matches Data.Map" prop_unionWith_model
         , testProperty "valid invariant" prop_unionWith_valid
         ]
-    , testGroup "mergeWithKey"
+    , testGroup
+        "mergeWithKey"
         [ testProperty "matches Data.Map" prop_mergeWithKey_model
         ]
-    , testGroup "difference"
+    , testGroup
+        "difference"
         [ testProperty "matches Data.Map" prop_difference_model
         , testProperty "valid invariant" prop_difference_valid
         ]
-    , testGroup "intersection"
+    , testGroup
+        "intersection"
         [ testProperty "matches Data.Map" prop_intersection_model
         , testProperty "valid invariant" prop_intersection_valid
         ]
-    , testGroup "filter"
+    , testGroup
+        "filter"
         [ testProperty "matches Data.Map" prop_filter_model
         , testProperty "valid invariant" prop_filter_valid
         ]
-    , testGroup "partition"
+    , testGroup
+        "partition"
         [ testProperty "matches Data.Map" prop_partition_model
         , testProperty "valid invariant" prop_partition_valid
         ]
-    , testGroup "mapMaybe"
+    , testGroup
+        "mapMaybe"
         [ testProperty "matches Data.Map" prop_mapMaybe_model
         , testProperty "valid invariant" prop_mapMaybe_valid
         ]
-    , testGroup "mapEither"
+    , testGroup
+        "mapEither"
         [ testProperty "matches Data.Map" prop_mapEither_model
         , testProperty "valid invariant" prop_mapEither_valid
         ]
-    , testGroup "isSubmapOf"
+    , testGroup
+        "isSubmapOf"
         [ testProperty "matches Data.Map" prop_isSubmapOf_model
         ]
     ]
@@ -491,4 +526,5 @@ prop_mergeWithKey_model e1 e2 =
       m2 = fromList e2
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
-   in sortToList (mergeWithKey f g1 g2 m1 m2) === Map.toList (Map.mergeWithKey f (Map.map id) (const Map.empty) ref1 ref2)
+   in sortToList (mergeWithKey f g1 g2 m1 m2)
+        === Map.toList (Map.mergeWithKey f (Map.map id) (const Map.empty) ref1 ref2)

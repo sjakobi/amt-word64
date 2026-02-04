@@ -86,7 +86,7 @@ insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertAtShift s k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k v
-    | otherwise -> split s k v k' v'
+    | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
       Index _ i ->
@@ -98,8 +98,8 @@ insertAtShift s k v m = case m of
             i = popCount (bm .&. (bit - 1))
          in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
-split :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
-split shift k1 v1 k2 v2 =
+two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
+two shift k1 v1 k2 v2 =
   let idx1 = fromIntegral ((k1 `Bits.shiftR` shift) .&. 0x3f)
       idx2 = fromIntegral ((k2 `Bits.shiftR` shift) .&. 0x3f)
    in if idx1 /= idx2
@@ -111,7 +111,7 @@ split shift k1 v1 k2 v2 =
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
            in Branch (BM bm) ary
         else
-          let child = split (shift + 6) k1 v1 k2 v2
+          let child = two (shift + 6) k1 v1 k2 v2
               bm = 1 `Bits.shiftL` idx1
            in Branch (BM bm) (smallArrayFromList [child])
 
@@ -160,7 +160,7 @@ insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExistsAtShift shift k v m = case m of
   Leaf k' v'
     | k == k' -> m
-    | otherwise -> split shift k v k' v' -- Note: v2 is kept, but here v is the new one and k' v' is existing. Wait, if k==k' we want to keep k'v'. split here would be used if they collide at this level.
+    | otherwise -> two shift k v k' v' -- Note: v2 is kept, but here v is the new one and k' v' is existing. Wait, if k==k' we want to keep k'v'. split here would be used if they collide at this level.
   Branch (BM bm) ary ->
     case index shift k (BM bm) of
       Index _ i ->

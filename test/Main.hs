@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Main (main) where
 
 import Amt.Word64.Map
@@ -34,7 +36,6 @@ import Amt.Word64.Map
   , mapMaybeWithKey
   , mapWithKey
   , member
-  , mergeWithKey
   , notMember
   , null
   , partition
@@ -55,6 +56,19 @@ import Data.Word (Word64)
 import Test.Tasty
 import Test.Tasty.QuickCheck
 import Prelude hiding (filter, lookup, map, null)
+
+newtype K = K Word64
+  deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
+
+instance Arbitrary K where
+  arbitrary = K . getLarge <$> arbitrary
+  shrink (K w) = K <$> shrink w
+
+toWord64 :: K -> Word64
+toWord64 (K w) = w
+
+fromWord64 :: Word64 -> K
+fromWord64 = K
 
 main :: IO ()
 main =
@@ -144,12 +158,7 @@ tests =
         [ testProperty "foldr matches toList" prop_foldr_model
         , testProperty "length matches size" prop_length_model
         ]
-    , {-
-          , testGroup "Traversable"
-              [ testProperty "traverse matches Data.Map" prop_traverse_model
-              ]
-      -}
-      testGroup
+    , testGroup
         "foldrWithKey"
         [ testProperty "visits all elements" prop_foldrWithKey_model
         ]
@@ -212,14 +221,7 @@ tests =
         [ testProperty "matches Data.Map" prop_unionWithKey_model
         , testProperty "valid invariant" prop_unionWithKey_valid
         ]
-    , {-
-          , testGroup
-              "mergeWithKey"
-              [ testProperty "matches Data.Map" prop_mergeWithKey_model
-              , testProperty "valid invariant" prop_mergeWithKey_valid
-              ]
-      -}
-      testGroup
+    , testGroup
         "difference"
         [ testProperty "matches Data.Map" prop_difference_model
         , testProperty "valid invariant" prop_difference_valid
@@ -294,482 +296,592 @@ tests =
         ]
     ]
 
-sortToList :: Word64Map a -> [(Word64, a)]
-sortToList = L.sortOn fst . toList
+sortToList :: Word64Map a -> [(K, a)]
+sortToList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
 
 checkValid :: Word64Map a -> Property
 checkValid m = case valid m of
   Nothing -> property True
   Just err -> counterexample (show err) False
 
-prop_singleton_model :: Word64 -> Int -> Property
+prop_singleton_model :: K -> Int -> Property
 prop_singleton_model k v =
-  sortToList (singleton k v) === Map.toList (Map.singleton k v)
+  sortToList (singleton (toWord64 k) v) === Map.toList (Map.singleton k v)
 
-prop_singleton_valid :: Word64 -> Int -> Property
-prop_singleton_valid k v = checkValid (singleton k v)
+prop_singleton_valid :: K -> Int -> Property
+prop_singleton_valid k v = checkValid (singleton (toWord64 k) v)
 
-prop_insert_model :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_insert_model :: [(K, Int)] -> K -> Int -> Property
 prop_insert_model entries k v =
-  sortToList (insert k v (fromList entries))
+  sortToList
+    ( insert
+        (toWord64 k)
+        v
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    )
     === Map.toList (Map.insert k v (Map.fromList entries))
 
-prop_insert_valid :: [(Word64, Int)] -> Word64 -> Int -> Property
-prop_insert_valid entries k v = checkValid (insert k v (fromList entries))
+prop_insert_valid :: [(K, Int)] -> K -> Int -> Property
+prop_insert_valid entries k v =
+  checkValid
+    ( insert
+        (toWord64 k)
+        v
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    )
 
-prop_delete_model :: [(Word64, Int)] -> [Word64] -> Property
+prop_delete_model :: [(K, Int)] -> [K] -> Property
 prop_delete_model entries ks =
-  let myMap = foldl (\m k -> delete k m) (fromList entries) ks
+  let myMap =
+        foldl
+          (\m k -> delete (toWord64 k) m)
+          (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+          ks
       refMap = foldl (\m k -> Map.delete k m) (Map.fromList entries) ks
    in sortToList myMap === Map.toList refMap
 
-prop_delete_valid :: [(Word64, Int)] -> [Word64] -> Property
+prop_delete_valid :: [(K, Int)] -> [K] -> Property
 prop_delete_valid entries ks =
-  checkValid (foldl (\m k -> delete k m) (fromList entries) ks)
+  checkValid
+    ( foldl
+        (\m k -> delete (toWord64 k) m)
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+        ks
+    )
 
-prop_union_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_union_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_union_model e1 e2 =
-  let m1 = fromList e1
-      m2 = fromList e2
+  let m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
       myUnion = union m1 m2
       refUnion = Map.union ref1 ref2
    in sortToList myUnion === Map.toList refUnion
 
-prop_union_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_union_valid e1 e2 = checkValid (union (fromList e1) (fromList e2))
+prop_union_valid :: [(K, Int)] -> [(K, Int)] -> Property
+prop_union_valid e1 e2 =
+  checkValid
+    ( union
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+    )
 
-prop_fromList_model :: [(Word64, Int)] -> Property
+prop_fromList_model :: [(K, Int)] -> Property
 prop_fromList_model entries =
-  sortToList (fromList entries) === Map.toList (Map.fromList entries)
+  sortToList (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.toList (Map.fromList entries)
 
-prop_fromList_valid :: [(Word64, Int)] -> Property
-prop_fromList_valid entries = checkValid (fromList entries)
+prop_fromList_valid :: [(K, Int)] -> Property
+prop_fromList_valid entries = checkValid (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
 
-prop_toList_model :: [(Word64, Int)] -> Property
+prop_toList_model :: [(K, Int)] -> Property
 prop_toList_model entries =
-  sortToList (fromList entries) === Map.toList (Map.fromList entries)
+  sortToList (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.toList (Map.fromList entries)
 
-prop_null_model :: [(Word64, Int)] -> Property
+prop_null_model :: [(K, Int)] -> Property
 prop_null_model entries =
-  null (fromList entries) === Map.null (Map.fromList entries)
+  null (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.null (Map.fromList entries)
 
-prop_size_model :: [(Word64, Int)] -> Property
+prop_size_model :: [(K, Int)] -> Property
 prop_size_model entries =
-  size (fromList entries) === Map.size (Map.fromList entries)
+  size (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.size (Map.fromList entries)
 
-prop_lookup_model :: [(Word64, Int)] -> Word64 -> Property
+prop_lookup_model :: [(K, Int)] -> K -> Property
 prop_lookup_model entries k =
-  lookup k (fromList entries) === Map.lookup k (Map.fromList entries)
+  lookup (toWord64 k) (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.lookup k (Map.fromList entries)
 
-prop_member_model :: [(Word64, Int)] -> Word64 -> Property
+prop_member_model :: [(K, Int)] -> K -> Property
 prop_member_model entries k =
-  member k (fromList entries) === Map.member k (Map.fromList entries)
+  member (toWord64 k) (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.member k (Map.fromList entries)
 
-prop_notMember_model :: [(Word64, Int)] -> Word64 -> Property
+prop_notMember_model :: [(K, Int)] -> K -> Property
 prop_notMember_model entries k =
-  notMember k (fromList entries) === Map.notMember k (Map.fromList entries)
+  notMember
+    (toWord64 k)
+    (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    === Map.notMember k (Map.fromList entries)
 
-prop_findWithDefault_model :: [(Word64, Int)] -> Int -> Word64 -> Property
+prop_findWithDefault_model :: [(K, Int)] -> Int -> K -> Property
 prop_findWithDefault_model entries def k =
-  findWithDefault def k (fromList entries)
+  findWithDefault
+    def
+    (toWord64 k)
+    (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
     === Map.findWithDefault def k (Map.fromList entries)
 
-prop_keys_model :: [(Word64, Int)] -> Property
+prop_keys_model :: [(K, Int)] -> Property
 prop_keys_model entries =
-  let m = fromList entries
-   in L.sort (keys m) === L.sort (L.map fst (toList m))
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+   in L.sort (L.map fromWord64 (keys m))
+        === L.sort (L.map fst (Map.toList (Map.fromList entries)))
 
-prop_elems_model :: [(Word64, Int)] -> Property
+prop_elems_model :: [(K, Int)] -> Property
 prop_elems_model entries =
-  let m = fromList entries
-   in L.sort (elems m) === L.sort (L.map snd (toList m))
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+   in L.sort (elems m) === L.sort (L.map snd (Map.toList (Map.fromList entries)))
 
-prop_assocs_model :: [(Word64, Int)] -> Property
+prop_assocs_model :: [(K, Int)] -> Property
 prop_assocs_model entries =
-  let m = fromList entries
-   in L.sortOn fst (assocs m) === sortToList m
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+   in L.sortOn fst (L.map (\(k, v) -> (fromWord64 k, v)) (assocs m))
+        === Map.toList (Map.fromList entries)
 
-prop_fmap_model :: [(Word64, Int)] -> Property
+prop_fmap_model :: [(K, Int)] -> Property
 prop_fmap_model entries =
   let f = (+ 1)
-      m = fromList entries
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
    in sortToList (fmap f m) === Map.toList (Map.map f ref)
 
-prop_foldr_model :: [(Word64, Int)] -> Property
+prop_foldr_model :: [(K, Int)] -> Property
 prop_foldr_model entries =
-  let m = fromList entries
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       f v acc = v : acc
    in L.sort (foldr f [] m) === L.sort (elems m)
 
-prop_length_model :: [(Word64, Int)] -> Property
+prop_length_model :: [(K, Int)] -> Property
 prop_length_model entries =
-  let m = fromList entries
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
    in length m === size m
 
-{-
-prop_traverse_model :: [(Word64, Int)] -> Property
-prop_traverse_model entries =
-  let f v = [v, v + 1]
-      m = fromList entries
-      ref = Map.fromList entries
-      -- traverse returns [Word64Map a]. We sort each map's list.
-      sortMap m = sortToList m
-   in L.sort (L.map sortMap (traverse f m)) === L.sort (L.map Map.toList (Map.traverseWithKey (\_ v -> f v) ref))
--}
-
-prop_foldrWithKey_model :: [(Word64, Int)] -> Property
+prop_foldrWithKey_model :: [(K, Int)] -> Property
 prop_foldrWithKey_model entries =
-  let m = fromList entries
-      f k v acc = (k, v) : acc
-   in L.sortOn fst (foldrWithKey f [] m) === sortToList m
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      f k v acc = (fromWord64 k, v) : acc
+   in L.sortOn fst (foldrWithKey f [] m) === Map.toList (Map.fromList entries)
 
-prop_foldlWithKey_model :: [(Word64, Int)] -> Property
+prop_foldlWithKey_model :: [(K, Int)] -> Property
 prop_foldlWithKey_model entries =
-  let m = fromList entries
-      f acc k v = (k, v) : acc
-   in L.sortOn fst (foldlWithKey' f [] m) === sortToList m
+  let m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      f acc k v = (fromWord64 k, v) : acc
+   in L.sortOn fst (foldlWithKey' f [] m) === Map.toList (Map.fromList entries)
 
-prop_insertWith_model :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_insertWith_model :: [(K, Int)] -> K -> Int -> Property
 prop_insertWith_model entries k v =
   let f x y = x + y
-      m = fromList entries
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-   in sortToList (insertWith f k v m) === Map.toList (Map.insertWith f k v ref)
+   in sortToList (insertWith f (toWord64 k) v m)
+        === Map.toList (Map.insertWith f k v ref)
 
-prop_insertWith_valid :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_insertWith_valid :: [(K, Int)] -> K -> Int -> Property
 prop_insertWith_valid entries k v =
   let f x y = x + y
-   in checkValid (insertWith f k v (fromList entries))
+   in checkValid
+        ( insertWith
+            f
+            (toWord64 k)
+            v
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+        )
 
-prop_adjust_model :: [(Word64, Int)] -> Word64 -> Property
+prop_insertWithKey_model :: [(K, Int)] -> K -> Int -> Property
+prop_insertWithKey_model entries k v =
+  let f k' new old = fromIntegral (toWord64 k') + new + old
+      m = fromList (L.map (\(k'', v'') -> (toWord64 k'', v'')) entries)
+      ref = Map.fromList entries
+   in sortToList
+        (insertWithKey (\k' new old -> f (fromWord64 k') new old) (toWord64 k) v m)
+        === Map.toList (Map.insertWithKey f k v ref)
+
+prop_insertWithKey_valid :: [(K, Int)] -> K -> Int -> Property
+prop_insertWithKey_valid entries k v =
+  let f k' new old = fromIntegral (toWord64 k') + new + old
+   in checkValid
+        ( insertWithKey
+            (\k' new old -> f (fromWord64 k') new old)
+            (toWord64 k)
+            v
+            (fromList (L.map (\(k'', v'') -> (toWord64 k'', v'')) entries))
+        )
+
+prop_adjust_model :: [(K, Int)] -> K -> Property
 prop_adjust_model entries k =
   let f x = x + 1
-      m = fromList entries
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-   in sortToList (adjust f k m) === Map.toList (Map.adjust f k ref)
+   in sortToList (adjust f (toWord64 k) m) === Map.toList (Map.adjust f k ref)
 
-prop_adjust_valid :: [(Word64, Int)] -> Word64 -> Property
+prop_adjust_valid :: [(K, Int)] -> K -> Property
 prop_adjust_valid entries k =
   let f x = x + 1
-   in checkValid (adjust f k (fromList entries))
+   in checkValid
+        ( adjust
+            f
+            (toWord64 k)
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+        )
 
-prop_update_model :: [(Word64, Int)] -> Word64 -> Property
+prop_adjustWithKey_model :: [(K, Int)] -> K -> Property
+prop_adjustWithKey_model entries k =
+  let f k' x = fromIntegral (toWord64 k') + x
+      m = fromList (L.map (\(k'', v'') -> (toWord64 k'', v'')) entries)
+      ref = Map.fromList entries
+   in sortToList (adjustWithKey (\k' x' -> f (fromWord64 k') x') (toWord64 k) m)
+        === Map.toList (Map.adjustWithKey f k ref)
+
+prop_adjustWithKey_valid :: [(K, Int)] -> K -> Property
+prop_adjustWithKey_valid entries k =
+  let f k' x = fromIntegral (toWord64 k') + x
+   in checkValid
+        ( adjustWithKey
+            (\k' x' -> f (fromWord64 k') x')
+            (toWord64 k)
+            (fromList (L.map (\(k'', v'') -> (toWord64 k'', v'')) entries))
+        )
+
+prop_update_model :: [(K, Int)] -> K -> Property
 prop_update_model entries k =
   let f x = if even x then Just (x + 1) else Nothing
-      m = fromList entries
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-   in sortToList (update f k m) === Map.toList (Map.update f k ref)
+   in sortToList (update f (toWord64 k) m) === Map.toList (Map.update f k ref)
 
-prop_update_valid :: [(Word64, Int)] -> Word64 -> Property
+prop_update_valid :: [(K, Int)] -> K -> Property
 prop_update_valid entries k =
   let f x = if even x then Just (x + 1) else Nothing
-   in checkValid (update f k (fromList entries))
+   in checkValid
+        ( update
+            f
+            (toWord64 k)
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+        )
 
-prop_alter_model :: [(Word64, Int)] -> Word64 -> Property
+prop_updateWithKey_model :: [(K, Int)] -> K -> Property
+prop_updateWithKey_model entries k =
+  let f k' x = if even (toWord64 k' + fromIntegral x) then Just (x + 1) else Nothing
+      m = fromList (L.map (\(k'', v'') -> (toWord64 k'', v'')) entries)
+      ref = Map.fromList entries
+   in sortToList (updateWithKey (\k' x' -> f (fromWord64 k') x') (toWord64 k) m)
+        === Map.toList (Map.updateWithKey f k ref)
+
+prop_updateWithKey_valid :: [(K, Int)] -> K -> Property
+prop_updateWithKey_valid entries k =
+  let f k' x = if even (toWord64 k' + fromIntegral x) then Just (x + 1) else Nothing
+   in checkValid
+        ( updateWithKey
+            (\k' x' -> f (fromWord64 k') x')
+            (toWord64 k)
+            (fromList (L.map (\(k'', v'') -> (toWord64 k'', v'')) entries))
+        )
+
+prop_alter_model :: [(K, Int)] -> K -> Property
 prop_alter_model entries k =
   let f Nothing = Just 1
       f (Just x) = if even x then Just (x + 1) else Nothing
-      m = fromList entries
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-   in sortToList (alter f k m) === Map.toList (Map.alter f k ref)
+   in sortToList (alter f (toWord64 k) m) === Map.toList (Map.alter f k ref)
 
-prop_alter_valid :: [(Word64, Int)] -> Word64 -> Property
+prop_alter_valid :: [(K, Int)] -> K -> Property
 prop_alter_valid entries k =
   let f Nothing = Just 1
       f (Just x) = if even x then Just (x + 1) else Nothing
-   in checkValid (alter f k (fromList entries))
+   in checkValid
+        (alter f (toWord64 k) (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)))
 
-prop_map_model :: [(Word64, Int)] -> Property
+prop_map_model :: [(K, Int)] -> Property
 prop_map_model entries =
   let f x = x + 1
-      m = fromList entries
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
    in sortToList (map f m) === Map.toList (Map.map f ref)
 
-prop_mapWithKey_model :: [(Word64, Int)] -> Property
-prop_mapWithKey_model entries =
-  let f k v = fromIntegral k + v
-      m = fromList entries
-      ref = Map.fromList entries
-   in sortToList (mapWithKey f m) === Map.toList (Map.mapWithKey f ref)
+prop_map_valid :: [(K, Int)] -> Property
+prop_map_valid entries =
+  checkValid
+    (map (+ 1) (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)))
 
-prop_unionWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_mapWithKey_model :: [(K, Int)] -> Property
+prop_mapWithKey_model entries =
+  let f k v = fromIntegral (toWord64 k) + v
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      ref = Map.fromList entries
+   in sortToList (mapWithKey (\k' v' -> f (fromWord64 k') v') m)
+        === Map.toList (Map.mapWithKey f ref)
+
+prop_mapWithKey_valid :: [(K, Int)] -> Property
+prop_mapWithKey_valid entries =
+  checkValid
+    ( mapWithKey
+        (\k v -> fromIntegral k + v)
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+    )
+
+prop_unionWith_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_unionWith_model e1 e2 =
   let f x y = x + y
-      m1 = fromList e1
-      m2 = fromList e2
+      m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in sortToList (unionWith f m1 m2) === Map.toList (Map.unionWith f ref1 ref2)
 
-prop_unionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_unionWith_valid :: [(K, Int)] -> [(K, Int)] -> Property
 prop_unionWith_valid e1 e2 =
   let f x y = x + y
-   in checkValid (unionWith f (fromList e1) (fromList e2))
+   in checkValid
+        ( unionWith
+            f
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+        )
 
-prop_difference_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_unionWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_unionWithKey_model e1 e2 =
+  let f k x y = fromIntegral (toWord64 k) + x + y
+      m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in sortToList (unionWithKey (\k' x' y' -> f (fromWord64 k') x' y') m1 m2)
+        === Map.toList (Map.unionWithKey f ref1 ref2)
+
+prop_unionWithKey_valid :: [(K, Int)] -> [(K, Int)] -> Property
+prop_unionWithKey_valid e1 e2 =
+  let f k x y = fromIntegral (toWord64 k) + x + y
+   in checkValid
+        ( unionWithKey
+            (\k' x' y' -> f (fromWord64 k') x' y')
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+        )
+
+prop_difference_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_difference_model e1 e2 =
-  let m1 = fromList e1
-      m2 = fromList e2
+  let m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in sortToList (difference m1 m2) === Map.toList (Map.difference ref1 ref2)
 
-prop_difference_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_difference_valid e1 e2 = checkValid (difference (fromList e1) (fromList e2))
+prop_difference_valid :: [(K, Int)] -> [(K, Int)] -> Property
+prop_difference_valid e1 e2 =
+  checkValid
+    ( difference
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+    )
 
-prop_intersection_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_intersection_model e1 e2 =
-  let m1 = fromList e1
-      m2 = fromList e2
-      ref1 = Map.fromList e1
-      ref2 = Map.fromList e2
-   in sortToList (intersection m1 m2) === Map.toList (Map.intersection ref1 ref2)
-
-prop_intersection_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_intersection_valid e1 e2 = checkValid (intersection (fromList e1) (fromList e2))
-
-prop_filter_model :: [(Word64, Int)] -> Property
-prop_filter_model entries =
-  let f x = even x
-      m = fromList entries
-      ref = Map.fromList entries
-   in sortToList (filter f m) === Map.toList (Map.filter f ref)
-
-prop_filter_valid :: [(Word64, Int)] -> Property
-prop_filter_valid entries = checkValid (filter even (fromList entries))
-
-prop_partition_model :: [(Word64, Int)] -> Property
-prop_partition_model entries =
-  let f x = even x
-      m = fromList entries
-      ref = Map.fromList entries
-      (l, r) = partition f m
-      (lRef, rRef) = Map.partition f ref
-   in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
-
-prop_partition_valid :: [(Word64, Int)] -> Property
-prop_partition_valid entries =
-  let (l, r) = partition even (fromList entries)
-   in checkValid l .&&. checkValid r
-
-prop_mapMaybe_model :: [(Word64, Int)] -> Property
-prop_mapMaybe_model entries =
-  let f x = if even x then Just (x `div` 2) else Nothing
-      m = fromList entries
-      ref = Map.fromList entries
-   in sortToList (mapMaybe f m) === Map.toList (Map.mapMaybe f ref)
-
-prop_mapMaybe_valid :: [(Word64, Int)] -> Property
-prop_mapMaybe_valid entries =
-  let f x = if even x then Just (x `div` 2) else Nothing
-   in checkValid (mapMaybe f (fromList entries))
-
-prop_mapEither_model :: [(Word64, Int)] -> Property
-prop_mapEither_model entries =
-  let f x = if even x then Left (x `div` 2) else Right (x * 2)
-      m = fromList entries
-      ref = Map.fromList entries
-      (l, r) = mapEither f m
-      (lRef, rRef) = Map.mapEither f ref
-   in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
-
-prop_mapEither_valid :: [(Word64, Int)] -> Property
-prop_mapEither_valid entries =
-  let f x = if even x then Left (x `div` 2) else Right (x * 2)
-      (l, r) = mapEither f (fromList entries)
-   in checkValid l .&&. checkValid r
-
-prop_isSubmapOf_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_isSubmapOf_model e1 e2 =
-  let m1 = fromList e1
-      m2 = fromList e2
-      ref1 = Map.fromList e1
-      ref2 = Map.fromList e2
-   in isSubmapOf m1 m2 === Map.isSubmapOf ref1 ref2
-
-prop_mergeWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_mergeWithKey_model e1 e2 =
-  let f k x y = if even (k + fromIntegral x + fromIntegral y) then Just (x + y) else Nothing
-      g1 = filter (const True) -- id-like but structural
-      g2 = const empty
-      m1 = fromList e1
-      m2 = fromList e2
-      ref1 = Map.fromList e1
-      ref2 = Map.fromList e2
-   in sortToList (mergeWithKey f g1 g2 m1 m2)
-        === Map.toList (Map.mergeWithKey f (Map.map id) (const Map.empty) ref1 ref2)
-
-prop_insertWithKey_model :: [(Word64, Int)] -> Word64 -> Int -> Property
-prop_insertWithKey_model entries k v =
-  let f k' new old = fromIntegral k' + new + old
-      m = fromList entries
-      ref = Map.fromList entries
-   in sortToList (insertWithKey f k v m) === Map.toList (Map.insertWithKey f k v ref)
-
-prop_insertWithKey_valid :: [(Word64, Int)] -> Word64 -> Int -> Property
-prop_insertWithKey_valid entries k v =
-  let f k' new old = fromIntegral k' + new + old
-   in checkValid (insertWithKey f k v (fromList entries))
-
-prop_adjustWithKey_model :: [(Word64, Int)] -> Word64 -> Property
-prop_adjustWithKey_model entries k =
-  let f k' x = fromIntegral k' + x
-      m = fromList entries
-      ref = Map.fromList entries
-   in sortToList (adjustWithKey f k m) === Map.toList (Map.adjustWithKey f k ref)
-
-prop_adjustWithKey_valid :: [(Word64, Int)] -> Word64 -> Property
-prop_adjustWithKey_valid entries k =
-  let f k' x = fromIntegral k' + x
-   in checkValid (adjustWithKey f k (fromList entries))
-
-prop_updateWithKey_model :: [(Word64, Int)] -> Word64 -> Property
-prop_updateWithKey_model entries k =
-  let f k' x = if even (k' + fromIntegral x) then Just (x + 1) else Nothing
-      m = fromList entries
-      ref = Map.fromList entries
-   in sortToList (updateWithKey f k m) === Map.toList (Map.updateWithKey f k ref)
-
-prop_updateWithKey_valid :: [(Word64, Int)] -> Word64 -> Property
-prop_updateWithKey_valid entries k =
-  let f k' x = if even (k' + fromIntegral x) then Just (x + 1) else Nothing
-   in checkValid (updateWithKey f k (fromList entries))
-
-prop_map_valid :: [(Word64, Int)] -> Property
-prop_map_valid entries = checkValid (map (+ 1) (fromList entries))
-
-prop_mapWithKey_valid :: [(Word64, Int)] -> Property
-prop_mapWithKey_valid entries = checkValid (mapWithKey (\k v -> fromIntegral k + v) (fromList entries))
-
-prop_unionWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_unionWithKey_model e1 e2 =
-  let f k x y = fromIntegral k + x + y
-      m1 = fromList e1
-      m2 = fromList e2
-      ref1 = Map.fromList e1
-      ref2 = Map.fromList e2
-   in sortToList (unionWithKey f m1 m2) === Map.toList (Map.unionWithKey f ref1 ref2)
-
-prop_unionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_unionWithKey_valid e1 e2 =
-  let f k x y = fromIntegral k + x + y
-   in checkValid (unionWithKey f (fromList e1) (fromList e2))
-
-prop_mergeWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
-prop_mergeWithKey_valid e1 e2 =
-  let f k x y = if even (k + fromIntegral x + fromIntegral y) then Just (x + y) else Nothing
-      g1 = filter (const True)
-      g2 = const empty
-   in checkValid (mergeWithKey f g1 g2 (fromList e1) (fromList e2))
-
-prop_differenceWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_differenceWith_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_differenceWith_model e1 e2 =
   let f x y = if even (x + y) then Just (x + y) else Nothing
-      m1 = fromList e1
-      m2 = fromList e2
+      m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in sortToList (differenceWith f m1 m2)
         === Map.toList (Map.differenceWith f ref1 ref2)
 
-prop_differenceWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_differenceWith_valid :: [(K, Int)] -> [(K, Int)] -> Property
 prop_differenceWith_valid e1 e2 =
   let f x y = if even (x + y) then Just (x + y) else Nothing
-   in checkValid (differenceWith f (fromList e1) (fromList e2))
+   in checkValid
+        ( differenceWith
+            f
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+        )
 
-prop_intersectionWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersection_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_intersection_model e1 e2 =
+  let m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in sortToList (intersection m1 m2) === Map.toList (Map.intersection ref1 ref2)
+
+prop_intersection_valid :: [(K, Int)] -> [(K, Int)] -> Property
+prop_intersection_valid e1 e2 =
+  checkValid
+    ( intersection
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+        (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+    )
+
+prop_intersectionWith_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_intersectionWith_model e1 e2 =
   let f x y = x + y
-      m1 = fromList e1
-      m2 = fromList e2
+      m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in sortToList (intersectionWith f m1 m2)
         === Map.toList (Map.intersectionWith f ref1 ref2)
 
-prop_intersectionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersectionWith_valid :: [(K, Int)] -> [(K, Int)] -> Property
 prop_intersectionWith_valid e1 e2 =
   let f x y = x + y
-   in checkValid (intersectionWith f (fromList e1) (fromList e2))
+   in checkValid
+        ( intersectionWith
+            f
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+        )
 
-prop_intersectionWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersectionWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_intersectionWithKey_model e1 e2 =
-  let f k x y = fromIntegral k + x + y
-      m1 = fromList e1
-      m2 = fromList e2
+  let f k x y = fromIntegral (toWord64 k) + x + y
+      m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
-   in sortToList (intersectionWithKey f m1 m2)
+   in sortToList (intersectionWithKey (\k' x' y' -> f (fromWord64 k') x' y') m1 m2)
         === Map.toList (Map.intersectionWithKey f ref1 ref2)
 
-prop_intersectionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersectionWithKey_valid :: [(K, Int)] -> [(K, Int)] -> Property
 prop_intersectionWithKey_valid e1 e2 =
-  let f k x y = fromIntegral k + x + y
-   in checkValid (intersectionWithKey f (fromList e1) (fromList e2))
+  let f k x y = fromIntegral (toWord64 k) + x + y
+   in checkValid
+        ( intersectionWithKey
+            (\k' x' y' -> f (fromWord64 k') x' y')
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e1))
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) e2))
+        )
 
-prop_filterWithKey_model :: [(Word64, Int)] -> Property
+prop_filter_model :: [(K, Int)] -> Property
+prop_filter_model entries =
+  let f x = even x
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      ref = Map.fromList entries
+   in sortToList (filter f m) === Map.toList (Map.filter f ref)
+
+prop_filter_valid :: [(K, Int)] -> Property
+prop_filter_valid entries =
+  checkValid
+    (filter even (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)))
+
+prop_filterWithKey_model :: [(K, Int)] -> Property
 prop_filterWithKey_model entries =
-  let f k v = even (k + fromIntegral v)
-      m = fromList entries
+  let f k v = even (toWord64 k + fromIntegral v)
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-   in sortToList (filterWithKey f m) === Map.toList (Map.filterWithKey f ref)
+   in sortToList (filterWithKey (\k' v' -> f (fromWord64 k') v') m)
+        === Map.toList (Map.filterWithKey f ref)
 
-prop_filterWithKey_valid :: [(Word64, Int)] -> Property
+prop_filterWithKey_valid :: [(K, Int)] -> Property
 prop_filterWithKey_valid entries =
-  let f k v = even (k + fromIntegral v)
-   in checkValid (filterWithKey f (fromList entries))
+  let f k v = even (toWord64 k + fromIntegral v)
+   in checkValid
+        ( filterWithKey
+            (\k' v' -> f (fromWord64 k') v')
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+        )
 
-prop_partitionWithKey_model :: [(Word64, Int)] -> Property
-prop_partitionWithKey_model entries =
-  let f k v = even (k + fromIntegral v)
-      m = fromList entries
+prop_partition_model :: [(K, Int)] -> Property
+prop_partition_model entries =
+  let f x = even x
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-      (l, r) = partitionWithKey f m
+      (l, r) = partition f m
+      (lRef, rRef) = Map.partition f ref
+   in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
+
+prop_partition_valid :: [(K, Int)] -> Property
+prop_partition_valid entries =
+  let (l, r) = partition even (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+   in checkValid l .&&. checkValid r
+
+prop_partitionWithKey_model :: [(K, Int)] -> Property
+prop_partitionWithKey_model entries =
+  let f k v = even (toWord64 k + fromIntegral v)
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      ref = Map.fromList entries
+      (l, r) = partitionWithKey (\k' v' -> f (fromWord64 k') v') m
       (lRef, rRef) = Map.partitionWithKey f ref
    in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
 
-prop_partitionWithKey_valid :: [(Word64, Int)] -> Property
+prop_partitionWithKey_valid :: [(K, Int)] -> Property
 prop_partitionWithKey_valid entries =
-  let f k v = even (k + fromIntegral v)
-      (l, r) = partitionWithKey f (fromList entries)
+  let f k v = even (toWord64 k + fromIntegral v)
+      (l, r) =
+        partitionWithKey
+          (\k' v' -> f (fromWord64 k') v')
+          (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
    in checkValid l .&&. checkValid r
 
-prop_mapMaybeWithKey_model :: [(Word64, Int)] -> Property
+prop_mapMaybe_model :: [(K, Int)] -> Property
+prop_mapMaybe_model entries =
+  let f x = if even x then Just (x `div` 2) else Nothing
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      ref = Map.fromList entries
+   in sortToList (mapMaybe f m) === Map.toList (Map.mapMaybe f ref)
+
+prop_mapMaybe_valid :: [(K, Int)] -> Property
+prop_mapMaybe_valid entries =
+  let f x = if even x then Just (x `div` 2) else Nothing
+   in checkValid
+        (mapMaybe f (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)))
+
+prop_mapMaybeWithKey_model :: [(K, Int)] -> Property
 prop_mapMaybeWithKey_model entries =
-  let f k v = if even (k + fromIntegral v) then Just (v + 1) else Nothing
-      m = fromList entries
+  let f k v = if even (toWord64 k + fromIntegral v) then Just (v + 1) else Nothing
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-   in sortToList (mapMaybeWithKey f m) === Map.toList (Map.mapMaybeWithKey f ref)
+   in sortToList (mapMaybeWithKey (\k' v' -> f (fromWord64 k') v') m)
+        === Map.toList (Map.mapMaybeWithKey f ref)
 
-prop_mapMaybeWithKey_valid :: [(Word64, Int)] -> Property
+prop_mapMaybeWithKey_valid :: [(K, Int)] -> Property
 prop_mapMaybeWithKey_valid entries =
-  let f k v = if even (k + fromIntegral v) then Just (v + 1) else Nothing
-   in checkValid (mapMaybeWithKey f (fromList entries))
+  let f k v = if even (toWord64 k + fromIntegral v) then Just (v + 1) else Nothing
+   in checkValid
+        ( mapMaybeWithKey
+            (\k' v' -> f (fromWord64 k') v')
+            (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+        )
 
-prop_mapEitherWithKey_model :: [(Word64, Int)] -> Property
-prop_mapEitherWithKey_model entries =
-  let f k v = if even (k + fromIntegral v) then Left (v + 1) else Right (v + 2)
-      m = fromList entries
+prop_mapEither_model :: [(K, Int)] -> Property
+prop_mapEither_model entries =
+  let f x = if even x then Left (x `div` 2) else Right (x * 2)
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
       ref = Map.fromList entries
-      (l, r) = mapEitherWithKey f m
+      (l, r) = mapEither f m
+      (lRef, rRef) = Map.mapEither f ref
+   in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
+
+prop_mapEither_valid :: [(K, Int)] -> Property
+prop_mapEither_valid entries =
+  let f x = if even x then Left (x `div` 2) else Right (x * 2)
+      (l, r) = mapEither f (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
+   in checkValid l .&&. checkValid r
+
+prop_mapEitherWithKey_model :: [(K, Int)] -> Property
+prop_mapEitherWithKey_model entries =
+  let f k v = if even (toWord64 k + fromIntegral v) then Left (v + 1) else Right (v + 2)
+      m = fromList (L.map (\(k', v') -> (toWord64 k', v')) entries)
+      ref = Map.fromList entries
+      (l, r) = mapEitherWithKey (\k' v' -> f (fromWord64 k') v') m
       (lRef, rRef) = Map.mapEitherWithKey f ref
    in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
 
-prop_mapEitherWithKey_valid :: [(Word64, Int)] -> Property
+prop_mapEitherWithKey_valid :: [(K, Int)] -> Property
 prop_mapEitherWithKey_valid entries =
-  let f k v = if even (k + fromIntegral v) then Left (v + 1) else Right (v + 2)
-      (l, r) = mapEitherWithKey f (fromList entries)
+  let f k v = if even (toWord64 k + fromIntegral v) then Left (v + 1) else Right (v + 2)
+      (l, r) =
+        mapEitherWithKey
+          (\k' v' -> f (fromWord64 k') v')
+          (fromList (L.map (\(k', v') -> (toWord64 k', v')) entries))
    in checkValid l .&&. checkValid r
 
-prop_isSubmapOfBy_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_isSubmapOf_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_isSubmapOf_model e1 e2 =
+  let m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in isSubmapOf m1 m2 === Map.isSubmapOf ref1 ref2
+
+prop_isSubmapOfBy_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_isSubmapOfBy_model e1 e2 =
   let f x y = x <= y
-      m1 = fromList e1
-      m2 = fromList e2
+      m1 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e1)
+      m2 = fromList (L.map (\(k', v') -> (toWord64 k', v')) e2)
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in isSubmapOfBy f m1 m2 === Map.isSubmapOfBy f ref1 ref2

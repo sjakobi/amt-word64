@@ -57,7 +57,7 @@ import Test.Tasty.QuickCheck
 import Prelude hiding (filter, lookup, map, null)
 
 main :: IO ()
-main = defaultMain tests
+main = defaultMain $ localOption (QuickCheckTests 500) $ localOption (QuickCheckMaxSize 500) tests
 
 tests :: TestTree
 tests =

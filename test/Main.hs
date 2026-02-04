@@ -286,6 +286,10 @@ tests =
         "isSubmapOf"
         [ testProperty "matches Data.Map" prop_isSubmapOf_model
         ]
+    , testGroup
+        "isSubmapOfBy"
+        [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
+        ]
     ]
 
 sortToList :: Word64Map a -> [(Word64, a)]
@@ -758,3 +762,12 @@ prop_mapEitherWithKey_valid entries =
   let f k v = if even (k + fromIntegral v) then Left (v + 1) else Right (v + 2)
       (l, r) = mapEitherWithKey f (fromList entries)
    in checkValid l .&&. checkValid r
+
+prop_isSubmapOfBy_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_isSubmapOfBy_model e1 e2 =
+  let f x y = x <= y
+      m1 = fromList e1
+      m2 = fromList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in isSubmapOfBy f m1 m2 === Map.isSubmapOfBy f ref1 ref2

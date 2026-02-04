@@ -1,0 +1,17 @@
+name: Format
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  fourmolu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/fourmolu-action@v10
+        with:
+          pattern: |
+            src/**/*.hs
+            test/**/*.hs

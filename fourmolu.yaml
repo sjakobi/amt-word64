@@ -1,0 +1,7 @@
+column-limit: 100
+indentation: 2
+newlines-between-decls: 1
+single-constraint-parens: never
+align-record-fields: true
+import-export-style: leading
+unicode-syntax: never

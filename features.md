@@ -5,43 +5,43 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 ## Query
 - [x] **`null`**: Implemented.
 - [x] **`size`**: Implemented.
-- [ ] **`member`**: Not implemented (can be derived from `lookup`).
-- [ ] **`notMember`**: Not implemented.
+- [x] **`member`**: Implemented.
+- [x] **`notMember`**: Implemented.
 - [x] **`lookup`**: Implemented.
-- [ ] **`findWithDefault`**: Not implemented.
+- [x] **`findWithDefault`**: Implemented.
 - [ ] **`lookupLT`, `lookupGT`, `lookupLE`, `lookupGE`**: Not planned.
 
 ## Construction
 - [x] **`empty`**: Implemented.
 - [x] **`singleton`**: Implemented.
-- [x] **`insert`**: Implemented (basic replacement).
-- [ ] **`insertWith` / `insertWithKey`**: Not implemented.
+- [x] **`insert`**: Implemented.
+- [x] **`insertWith` / `insertWithKey`**: Implemented.
 - [x] **`delete`**: Implemented.
-- [ ] **`adjust` / `adjustWithKey`**: Not implemented.
-- [ ] **`update` / `updateWithKey`**: Not implemented.
-- [ ] **`alter`**: Not implemented.
+- [x] **`adjust` / `adjustWithKey`**: Implemented.
+- [x] **`update` / `updateWithKey`**: Implemented.
+- [x] **`alter`**: Implemented.
 
 ## Combine
-- [x] **`union`**: Implemented (left-biased).
-- [ ] **`unionWith` / `unionWithKey`**: Not implemented.
-- [ ] **`difference` / `differenceWith`**: Not implemented.
-- [ ] **`intersection` / `intersectionWith`**: Not implemented.
-- [ ] **`mergeWithKey`**: Not implemented.
+- [x] **`union`**: Implemented.
+- [x] **`unionWith` / `unionWithKey`**: Implemented.
+- [x] **`difference` / `differenceWith`**: Implemented.
+- [x] **`intersection` / `intersectionWith`**: Implemented.
+- [x] **`mergeWithKey`**: Implemented.
 
 ## Traversal / Conversion
-- [ ] **`map` / `mapWithKey`**: Not implemented.
-- [ ] **`traverseWithKey`**: Not implemented.
-- [ ] **`foldr` / `foldl'` / `foldrWithKey` / `foldlWithKey'`**: Not implemented.
-- [ ] **`elems`**: Not implemented.
-- [ ] **`keys`**: Not implemented.
-- [ ] **`assocs`**: Not implemented.
-- [x] **`toList`**: Implemented (unsorted but deterministic).
+- [x] **`map` / `mapWithKey`**: Implemented.
+- [ ] **`traverseWithKey`**: Skip for now
+- [x] **`foldr` / `foldl'` / `foldrWithKey` / `foldlWithKey'`**: Implemented.
+- [x] **`elems`**: Implemented.
+- [x] **`keys`**: Implemented.
+- [x] **`assocs`**: Implemented.
+- [x] **`toList`**: Implemented.
 - [x] **`fromList`**: Implemented.
 
 ## Filter / Partition
-- [ ] **`filter` / `filterWithKey`**: Not implemented.
-- [ ] **`partition` / `partitionWithKey`**: Not implemented.
-- [ ] **`mapMaybe` / `mapEither`**: Not implemented.
+- [x] **`filter` / `filterWithKey`**: Implemented.
+- [x] **`partition` / `partitionWithKey`**: Implemented.
+- [x] **`mapMaybe` / `mapEither`**: Implemented.
 
 ## Min / Max
 - [ ] **`findMin` / `findMax`**: Not planned.
@@ -51,4 +51,4 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 ## Submap
 - [ ] **`split`**: Not planned.
 - [ ] **`splitLookup`**: Not planned.
-- [ ] **`isSubmapOf` / `isSubmapOfBy`**: Not implemented.
+- [x] **`isSubmapOf` / `isSubmapOfBy`**: Implemented.

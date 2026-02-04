@@ -5,11 +5,46 @@ module MyLib
   , null
   , size
   , insert
+  , insertWith
+  , insertWithKey
   , delete
+  , adjust
+  , adjustWithKey
+  , update
+  , updateWithKey
+  , alter
   , lookup
+  , member
+  , notMember
+  , findWithDefault
+  , map
+  , mapWithKey
   , union
+  , unionWith
+  , unionWithKey
+  , mergeWithKey
+  , difference
+  , differenceWith
+  , intersection
+  , intersectionWith
+  , intersectionWithKey
+  , filter
+  , filterWithKey
+  , partition
+  , partitionWithKey
+  , mapMaybe
+  , mapMaybeWithKey
+  , mapEither
+  , mapEitherWithKey
+  , isSubmapOf
+  , isSubmapOfBy
   , fromList
   , toList
+  , elems
+  , keys
+  , assocs
+  , foldrWithKey
+  , foldlWithKey'
   , valid
   ) where
 
@@ -18,7 +53,7 @@ import Data.Bits qualified as Bits
 import Data.Foldable qualified as Foldable
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
-import Prelude hiding (lookup, null)
+import Prelude hiding (filter, lookup, map, null)
 
 -- | An array-mapped trie with 64-bit word keys.
 --
@@ -39,6 +74,23 @@ import Prelude hiding (lookup, null)
 data Word64Map a
   = Branch !Bitmap !(SmallArray (Word64Map a))
   | Leaf !Word64 a
+
+instance Functor Word64Map where
+  fmap f (Leaf k v) = Leaf k (f v)
+  fmap f (Branch bm ary) = Branch bm (fmap (fmap f) ary)
+
+instance Foldable Word64Map where
+  foldMap f (Leaf _ v) = f v
+  foldMap f (Branch _ ary) = Foldable.foldMap (foldMap f) ary
+
+  foldr f z (Leaf _ v) = f v z
+  foldr f z (Branch _ ary) = Foldable.foldr (\m acc -> foldr f acc m) z ary
+
+  length = size
+
+instance Traversable Word64Map where
+  traverse f (Leaf k v) = Leaf k <$> f v
+  traverse f (Branch bm ary) = Branch bm <$> traverse (traverse f) ary
 
 newtype Bitmap = BM Word64
 
@@ -99,6 +151,36 @@ lookup k = go 0
       NoIndex -> Nothing
       Index _ i -> go (shift + 6) (indexSmallArray ary i)
 
+member :: Word64 -> Word64Map a -> Bool
+member k m = case lookup k m of
+  Just _ -> True
+  Nothing -> False
+
+notMember :: Word64 -> Word64Map a -> Bool
+notMember k m = not (member k m)
+
+findWithDefault :: a -> Word64 -> Word64Map a -> a
+findWithDefault def k m = case lookup k m of
+  Just v -> v
+  Nothing -> def
+
+elems :: Word64Map a -> [a]
+elems = fmap snd . toList
+
+keys :: Word64Map a -> [Word64]
+keys = fmap fst . toList
+
+assocs :: Word64Map a -> [(Word64, a)]
+assocs = toList
+
+foldrWithKey :: (Word64 -> a -> b -> b) -> b -> Word64Map a -> b
+foldrWithKey f z (Leaf k v) = f k v z
+foldrWithKey f z (Branch _ ary) = Foldable.foldr (\m acc -> foldrWithKey f acc m) z ary
+
+foldlWithKey' :: (b -> Word64 -> a -> b) -> b -> Word64Map a -> b
+foldlWithKey' f z (Leaf k v) = f z k v
+foldlWithKey' f z (Branch _ ary) = Foldable.foldl' (\acc m -> foldlWithKey' f acc m) z ary
+
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
 insert k v m = case m of
   Branch (BM 0) _ -> singleton k v
@@ -113,6 +195,42 @@ insert k v m = case m of
          in Branch (BM bm) (updateAt i newChild ary)
       NoIndex ->
         let bit = 1 `Bits.shiftL` fromIntegral (k .&. 0x3f)
+            i = popCount (bm .&. (bit - 1))
+         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+
+insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+insertWith f = insertWithKey (\_ new old -> f new old)
+
+insertWithKey :: (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+insertWithKey f k v m = case m of
+  Branch (BM 0) _ -> singleton k v
+  Leaf k' v'
+    | k == k' -> Leaf k (f k v v')
+    | otherwise -> two 0 k v k' v'
+  Branch (BM bm) ary ->
+    case index 0 k (BM bm) of
+      Index _ i ->
+        let child = indexSmallArray ary i
+            newChild = insertWithKeyAtShift 6 f k v child
+         in Branch (BM bm) (updateAt i newChild ary)
+      NoIndex ->
+        let bit = 1 `Bits.shiftL` fromIntegral (k .&. 0x3f)
+            i = popCount (bm .&. (bit - 1))
+         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+
+insertWithKeyAtShift :: Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+insertWithKeyAtShift s f k v m = case m of
+  Leaf k' v'
+    | k == k' -> Leaf k (f k v v')
+    | otherwise -> two s k v k' v'
+  Branch (BM bm) ary ->
+    case index s k (BM bm) of
+      Index _ i ->
+        let child = indexSmallArray ary i
+            newChild = insertWithKeyAtShift (s + 6) f k v child
+         in Branch (BM bm) (updateAt i newChild ary)
+      NoIndex ->
+        let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` s) .&. 0x3f)
             i = popCount (bm .&. (bit - 1))
          in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
@@ -174,6 +292,45 @@ delete k m = go 0 m
                   then newChild
                   else Branch (BM bm) (updateAt i newChild ary)
 
+adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
+adjust f = adjustWithKey (\_ x -> f x)
+
+adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
+adjustWithKey f k m = go 0 m
+ where
+  go _ (Leaf k' v)
+    | k == k' = Leaf k (f k v)
+    | otherwise = Leaf k' v
+  go shift (Branch (BM bm) ary) =
+    case index shift k (BM bm) of
+      NoIndex -> Branch (BM bm) ary
+      Index _ i ->
+        let child = indexSmallArray ary i
+            newChild = go (shift + 6) child
+         in Branch (BM bm) (updateAt i newChild ary)
+
+update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+update f = updateWithKey (\_ x -> f x)
+
+updateWithKey :: (Word64 -> a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+updateWithKey f k = alter (\v -> v >>= f k) k
+
+alter :: (Maybe a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+alter f k m = case lookup k m of
+  Nothing -> case f Nothing of
+    Nothing -> m
+    Just v -> insert k v m
+  Just v -> case f (Just v) of
+    Nothing -> delete k m
+    Just v' -> insert k v' m
+
+map :: (a -> b) -> Word64Map a -> Word64Map b
+map = fmap
+
+mapWithKey :: (Word64 -> a -> b) -> Word64Map a -> Word64Map b
+mapWithKey f (Leaf k v) = Leaf k (f k v)
+mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
+
 union :: Word64Map a -> Word64Map a -> Word64Map a
 union m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
@@ -183,7 +340,7 @@ union m1 m2 = case (m1, m2) of
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
     let newBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit newBm b]
-        newAryList = flip map bits $ \b ->
+        newAryList = flip fmap bits $ \b ->
           let bit = 1 `Bits.shiftL` b
               mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
@@ -203,7 +360,7 @@ unionAtShift shift m1 m2 = case (m1, m2) of
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
     let newBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit newBm b]
-        newAryList = flip map bits $ \b ->
+        newAryList = flip fmap bits $ \b ->
           let bit = 1 `Bits.shiftL` b
               mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
@@ -212,6 +369,49 @@ unionAtShift shift m1 m2 = case (m1, m2) of
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "union: impossible"
+     in Branch (BM newBm) (smallArrayFromList newAryList)
+
+unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWith f = unionWithKey (\_ x y -> f x y)
+
+unionWithKey :: (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWithKey f m1 m2 = case (m1, m2) of
+  (Branch (BM 0) _, _) -> m2
+  (_, Branch (BM 0) _) -> m1
+  (Leaf k1 v1, _) -> insertWithKey f k1 v1 m2
+  (_, Leaf k2 v2) -> insertWithKey (\k new old -> f k old new) k2 v2 m1
+  (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
+    let newBm = bm1 .|. bm2
+        bits = [b | b <- [0 .. 63], testBit newBm b]
+        newAryList = flip fmap bits $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
+              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+           in case (mIndex1, mIndex2) of
+                (Just i1, Just i2) -> unionWithKeyAtShift 6 f (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                (Just i1, Nothing) -> indexSmallArray ary1 i1
+                (Nothing, Just i2) -> indexSmallArray ary2 i2
+                (Nothing, Nothing) -> error "unionWithKey: impossible"
+     in Branch (BM newBm) (smallArrayFromList newAryList)
+
+unionWithKeyAtShift :: Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
+  (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
+  (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
+  (Branch (BM 0) _, _) -> m2
+  (_, Branch (BM 0) _) -> m1
+  (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
+    let newBm = bm1 .|. bm2
+        bits = [b | b <- [0 .. 63], testBit newBm b]
+        newAryList = flip fmap bits $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
+              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+           in case (mIndex1, mIndex2) of
+                (Just i1, Just i2) -> unionWithKeyAtShift (shift + 6) f (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                (Just i1, Nothing) -> indexSmallArray ary1 i1
+                (Nothing, Just i2) -> indexSmallArray ary2 i2
+                (Nothing, Nothing) -> error "unionWithKey: impossible"
      in Branch (BM newBm) (smallArrayFromList newAryList)
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
@@ -263,3 +463,197 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary 0 ary 0 i
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
+
+mkBranch :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
+mkBranch (BM 0) _ = empty
+mkBranch (BM bm) ary
+  | popCount bm == 1 =
+      let child = indexSmallArray ary 0
+       in if size child == 1 then child else Branch (BM bm) ary
+  | otherwise = Branch (BM bm) ary
+
+mergeWithKey :: (Word64 -> a -> b -> Maybe c) -> (Word64Map a -> Word64Map c) -> (Word64Map b -> Word64Map c) -> Word64Map a -> Word64Map b -> Word64Map c
+mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
+ where
+  go _ (Branch (BM 0) _) m2 = g2 m2
+  go _ m1 (Branch (BM 0) _) = g1 m1
+  go _ (Leaf k1 v1) m2 = case lookup k1 m2 of
+    Nothing -> g1 (Leaf k1 v1) `union` g2 m2
+    Just v2 ->
+      let rest = delete k1 m2
+       in case f k1 v1 v2 of
+            Nothing -> g2 rest
+            Just v' -> insert k1 v' (g2 rest)
+  go _ m1 (Leaf k2 v2) = case lookup k2 m1 of
+    Nothing -> g1 m1 `union` g2 (Leaf k2 v2)
+    Just v1 ->
+      let rest = delete k2 m1
+       in case f k2 v1 v2 of
+            Nothing -> g1 rest
+            Just v' -> insert k2 v' (g1 rest)
+  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+    let allBm = bm1 .|. bm2
+        bits = [b | b <- [0 .. 63], testBit allBm b]
+        pairs = flip fmap bits $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
+              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+           in case (mIndex1, mIndex2) of
+                (Just i1, Just i2) -> (b, go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
+                (Just i1, Nothing) -> (b, g1 (indexSmallArray ary1 i1))
+                (Nothing, Just i2) -> (b, g2 (indexSmallArray ary2 i2))
+                (Nothing, Nothing) -> error "mergeWithKey: impossible"
+        validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 validPairs
+        newAry = smallArrayFromList [r | (_, r) <- validPairs]
+     in mkBranch (BM newBm) newAry
+
+difference :: Word64Map a -> Word64Map b -> Word64Map a
+difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2
+
+differenceWith :: (a -> b -> Maybe a) -> Word64Map a -> Word64Map b -> Word64Map a
+differenceWith f m1_ m2_ = go (0 :: Shift) m1_ m2_
+ where
+  go _ (Branch (BM 0) _) _ = empty
+  go _ m1 (Branch (BM 0) _) = m1
+  go _ (Leaf k1 v1) m2 = case lookup k1 m2 of
+    Nothing -> Leaf k1 v1
+    Just v2 -> case f v1 v2 of
+      Nothing -> empty
+      Just v1' -> Leaf k1 v1'
+  go _ m1 (Leaf k2 _) = delete k2 m1
+  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+    let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
+        pairs = flip fmap bits1 $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              i1 = popCount (bm1 .&. (bit - 1))
+              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+           in case mIndex2 of
+                Nothing -> (b, indexSmallArray ary1 i1)
+                Just i2 -> (b, go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
+        validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 validPairs
+        newAry = smallArrayFromList [r | (_, r) <- validPairs]
+     in mkBranch (BM newBm) newAry
+
+intersection :: Word64Map a -> Word64Map b -> Word64Map a
+intersection m1 m2 = intersectionWith (\x _ -> x) m1 m2
+
+intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
+intersectionWith f = intersectionWithKey (\_ x y -> f x y)
+
+intersectionWithKey :: (Word64 -> a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
+intersectionWithKey f m1_ m2_ = go (0 :: Shift) m1_ m2_
+ where
+  go _ (Branch (BM 0) _) _ = empty
+  go _ _ (Branch (BM 0) _) = empty
+  go _ (Leaf k1 v1) m2 = case lookup k1 m2 of
+    Nothing -> empty
+    Just v2 -> Leaf k1 (f k1 v1 v2)
+  go _ m1 (Leaf k2 v2) = case lookup k2 m1 of
+    Nothing -> empty
+    Just v1 -> Leaf k2 (f k2 v1 v2)
+  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+    let commonBm = bm1 .&. bm2
+        bits = [b | b <- [0 .. 63], testBit commonBm b]
+        pairs = flip fmap bits $ \b ->
+          let bit = 1 `Bits.shiftL` b
+              i1 = popCount (bm1 .&. (bit - 1))
+              i2 = popCount (bm2 .&. (bit - 1))
+              child = go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+           in (b, child)
+        validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 validPairs
+        newAry = smallArrayFromList [r | (_, r) <- validPairs]
+     in mkBranch (BM newBm) newAry
+
+filter :: (a -> Bool) -> Word64Map a -> Word64Map a
+filter f = filterWithKey (\_ x -> f x)
+
+filterWithKey :: (Word64 -> a -> Bool) -> Word64Map a -> Word64Map a
+filterWithKey f (Leaf k v) = if f k v then Leaf k v else empty
+filterWithKey f (Branch (BM bm) ary) =
+  let results = fmap (filterWithKey f) (Foldable.toList ary)
+      bits = [b | b <- [0 .. 63], testBit bm b]
+      pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
+      newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 pairs
+      newAry = smallArrayFromList [r | (_, r) <- pairs]
+   in mkBranch (BM newBm) newAry
+
+partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
+partition f = partitionWithKey (\_ x -> f x)
+
+partitionWithKey :: (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
+partitionWithKey f (Leaf k v)
+  | f k v = (Leaf k v, empty)
+  | otherwise = (empty, Leaf k v)
+partitionWithKey f (Branch (BM bm) ary) =
+  let results = fmap (partitionWithKey f) (Foldable.toList ary)
+      bits = [b | b <- [0 .. 63], testBit bm b]
+      (lResults, rResults) = unzip results
+      lPairs = [(b, r) | (b, r) <- zip bits lResults, not (null r)]
+      rPairs = [(b, r) | (b, r) <- zip bits rResults, not (null r)]
+      lBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 lPairs
+      rBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 rPairs
+      lAry = smallArrayFromList [r | (_, r) <- lPairs]
+      rAry = smallArrayFromList [r | (_, r) <- rPairs]
+   in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
+
+mapMaybe :: (a -> Maybe b) -> Word64Map a -> Word64Map b
+mapMaybe f = mapMaybeWithKey (\_ x -> f x)
+
+mapMaybeWithKey :: (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b
+mapMaybeWithKey f (Leaf k v) = case f k v of
+  Nothing -> empty
+  Just v' -> Leaf k v'
+mapMaybeWithKey f (Branch (BM bm) ary) =
+  let results = fmap (mapMaybeWithKey f) (Foldable.toList ary)
+      bits = [b | b <- [0 .. 63], testBit bm b]
+      pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
+      newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 pairs
+      newAry = smallArrayFromList [r | (_, r) <- pairs]
+   in mkBranch (BM newBm) newAry
+
+mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
+mapEither f = mapEitherWithKey (\_ x -> f x)
+
+mapEitherWithKey :: (Word64 -> a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
+mapEitherWithKey f (Leaf k v) = case f k v of
+  Left b -> (Leaf k b, empty)
+  Right c -> (empty, Leaf k c)
+mapEitherWithKey f (Branch (BM bm) ary) =
+  let results = fmap (mapEitherWithKey f) (Foldable.toList ary)
+      bits = [b | b <- [0 .. 63], testBit bm b]
+      (lResults, rResults) = unzip results
+      lPairs = [(b, r) | (b, r) <- zip bits lResults, not (null r)]
+      rPairs = [(b, r) | (b, r) <- zip bits rResults, not (null r)]
+      lBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 lPairs
+      rBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 rPairs
+      lAry = smallArrayFromList [r | (_, r) <- lPairs]
+      rAry = smallArrayFromList [r | (_, r) <- rPairs]
+   in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
+
+isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
+isSubmapOf = isSubmapOfBy (==)
+
+isSubmapOfBy :: (a -> b -> Bool) -> Word64Map a -> Word64Map b -> Bool
+isSubmapOfBy f m1_ m2_ = go (0 :: Shift) m1_ m2_
+ where
+  go _ (Branch (BM 0) _) _ = True
+  go _ _ (Branch (BM 0) _) = False
+  go _ (Leaf k1 v1) m2 = case lookup k1 m2 of
+    Nothing -> False
+    Just v2 -> f v1 v2
+  go _ (Branch _ _) (Leaf _ _) = False
+  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+    let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
+     in all
+          ( \b ->
+              let bit = 1 `Bits.shiftL` b
+                  i1 = popCount (bm1 .&. (bit - 1))
+                  mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+               in case mIndex2 of
+                    Nothing -> False
+                    Just i2 -> go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+          )
+          bits1

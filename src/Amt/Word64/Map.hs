@@ -126,7 +126,7 @@ valid :: Word64Map a -> Maybe InvariantViolation
 valid = go True 0 0
  where
   go _ shift prefix (Leaf k _) =
-    let mask = if shift >= 64 then complement 0 else (1 `Bits.shiftL` shift) - 1
+    let mask = if shift >= 64 then complement 0 else Bits.bit shift - 1
      in if (k .&. mask) == prefix
           then Nothing
           else Just $ PrefixMismatch k shift prefix
@@ -154,7 +154,7 @@ valid = go True 0 0
 
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =
-  let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
+  let bit = Bits.bit (fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f))
       i = popCount (bm .&. (bit - 1))
       match = if bm .&. bit == 0 then NoMatch else Match
    in Index (BM bit) i match
@@ -290,7 +290,7 @@ two shift k1 v1 k2 v2 =
       idx2 = fromIntegral ((k2 `Bits.shiftR` shift) .&. 0x3f)
    in if idx1 /= idx2
         then
-          let bm = (1 `Bits.shiftL` idx1) .|. (1 `Bits.shiftL` idx2)
+          let bm = Bits.bit idx1 .|. Bits.bit idx2
               ary =
                 if idx1 < idx2
                   then smallArrayFromList [Leaf k1 v1, Leaf k2 v2]
@@ -298,7 +298,7 @@ two shift k1 v1 k2 v2 =
            in Branch (BM bm) ary
         else
           let child = two (shift + 6) k1 v1 k2 v2
-              bm = 1 `Bits.shiftL` idx1
+              bm = Bits.bit idx1
            in Branch (BM bm) (smallArrayFromList [child])
 
 delete :: Word64 -> Word64Map a -> Word64Map a
@@ -374,7 +374,7 @@ unionAtShift shift m1 m2 = case (m1, m2) of
     let newBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit newBm b]
         newAryList = flip fmap bits $ \b ->
-          let bit = 1 `Bits.shiftL` b
+          let bit = Bits.bit b
               mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
            in case (mIndex1, mIndex2) of
@@ -402,7 +402,7 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
     let newBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit newBm b]
         newAryList = flip fmap bits $ \b ->
-          let bit = 1 `Bits.shiftL` b
+          let bit = Bits.bit b
               mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
            in case (mIndex1, mIndex2) of
@@ -504,7 +504,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
     let allBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit allBm b]
         pairs = flip fmap bits $ \b ->
-          let bit = 1 `Bits.shiftL` b
+          let bit = Bits.bit b
               mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
            in case (mIndex1, mIndex2) of
@@ -513,7 +513,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
                 (Nothing, Just i2) -> (b, g2 (indexSmallArray ary2 i2))
                 (Nothing, Nothing) -> error "mergeWithKey: impossible"
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 validPairs
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
      in mkBranch (BM newBm) newAry
 
@@ -535,14 +535,14 @@ differenceWith f m1_ m2_ = go (0 :: Shift) m1_ m2_
   go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
         pairs = flip fmap bits1 $ \b ->
-          let bit = 1 `Bits.shiftL` b
+          let bit = Bits.bit b
               i1 = popCount (bm1 .&. (bit - 1))
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
            in case mIndex2 of
                 Nothing -> (b, indexSmallArray ary1 i1)
                 Just i2 -> (b, go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 validPairs
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
      in mkBranch (BM newBm) newAry
 
@@ -568,13 +568,13 @@ intersectionWithKey f m1_ m2_ = go (0 :: Shift) m1_ m2_
     let commonBm = bm1 .&. bm2
         bits = [b | b <- [0 .. 63], testBit commonBm b]
         pairs = flip fmap bits $ \b ->
-          let bit = 1 `Bits.shiftL` b
+          let bit = Bits.bit b
               i1 = popCount (bm1 .&. (bit - 1))
               i2 = popCount (bm2 .&. (bit - 1))
               child = go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
            in (b, child)
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 validPairs
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
      in mkBranch (BM newBm) newAry
 
@@ -589,7 +589,7 @@ filterWithKey f m = go m
     let results = fmap go (Foldable.toList ary)
         bits = [b | b <- [0 .. 63], testBit bm b]
         pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 pairs
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
         newAry = smallArrayFromList [r | (_, r) <- pairs]
      in mkBranch (BM newBm) newAry
 
@@ -609,8 +609,8 @@ partitionWithKey f m = go m
         (lResults, rResults) = unzip results
         lPairs = [(b, res) | (b, res) <- zip bits lResults, not (null res)]
         rPairs = [(b, res) | (b, res) <- zip bits rResults, not (null res)]
-        lBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 lPairs
-        rBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 rPairs
+        lBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 lPairs
+        rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
         lAry = smallArrayFromList [res | (_, res) <- lPairs]
         rAry = smallArrayFromList [res | (_, res) <- rPairs]
      in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
@@ -628,7 +628,7 @@ mapMaybeWithKey f m = go m
     let results = fmap go (Foldable.toList ary)
         bits = [b | b <- [0 .. 63], testBit bm b]
         pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 pairs
+        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
         newAry = smallArrayFromList [r | (_, r) <- pairs]
      in mkBranch (BM newBm) newAry
 
@@ -648,8 +648,8 @@ mapEitherWithKey f m = go m
         (lResults, rResults) = unzip results
         lPairs = [(b, res) | (b, res) <- zip bits lResults, not (null res)]
         rPairs = [(b, res) | (b, res) <- zip bits rResults, not (null res)]
-        lBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 lPairs
-        rBm = Foldable.foldl' (\acc (b, _) -> acc .|. (1 `Bits.shiftL` b)) 0 rPairs
+        lBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 lPairs
+        rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
         lAry = smallArrayFromList [res | (_, res) <- lPairs]
         rAry = smallArrayFromList [res | (_, res) <- rPairs]
      in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
@@ -670,7 +670,7 @@ isSubmapOfBy f m1_ m2_ = go (0 :: Shift) m1_ m2_
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
      in all
           ( \b ->
-              let bit = 1 `Bits.shiftL` b
+              let bit = Bits.bit b
                   i1 = popCount (bm1 .&. (bit - 1))
                   mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
                in case mIndex2 of

@@ -29,7 +29,7 @@ prop_lookup :: [(Word64, Int)] -> [Word64] -> Bool
 prop_lookup entries keys =
   let myMap = fromList entries
       refMap = Map.fromList entries
-   in all (\k -> lookup k myMap == Map.lookup k refMap) (keys ++ map fst entries)
+   in all (\k -> lookup k myMap == Map.lookup k refMap) (keys ++ map fst entries) && valid myMap
 
 prop_valid :: [(Word64, Int)] -> Bool
 prop_valid entries =
@@ -46,13 +46,13 @@ prop_null :: [(Word64, Int)] -> Bool
 prop_null entries =
   let myMap = fromList entries
       refMap = Map.fromList entries
-   in null myMap == Map.null refMap
+   in null myMap == Map.null refMap && valid myMap
 
 prop_size :: [(Word64, Int)] -> Bool
 prop_size entries =
   let myMap = fromList entries
       refMap = Map.fromList entries
-   in size myMap == Map.size refMap
+   in size myMap == Map.size refMap && valid myMap
 
 prop_fromList :: [(Word64, Int)] -> Bool
 prop_fromList entries =
@@ -65,7 +65,7 @@ prop_toList entries =
   let myMap = fromList entries
       refMap = Map.fromList entries
       myList = toList myMap
-   in Map.fromList myList == refMap
+   in Map.fromList myList == refMap && valid myMap
 
 prop_delete :: [(Word64, Int)] -> [Word64] -> Bool
 prop_delete entries keys =

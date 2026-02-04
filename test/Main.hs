@@ -3,50 +3,38 @@ module Main (main) where
 import Amt.Word64.Map
   ( Word64Map
   , adjust
-  , adjustWithKey
   , alter
   , assocs
   , delete
   , difference
-  , differenceWith
   , elems
   , empty
   , filter
-  , filterWithKey
   , findWithDefault
   , foldlWithKey'
   , foldrWithKey
   , fromList
   , insert
   , insertWith
-  , insertWithKey
   , intersection
-  , intersectionWith
-  , intersectionWithKey
   , isSubmapOf
-  , isSubmapOfBy
   , keys
   , lookup
   , map
   , mapEither
-  , mapEitherWithKey
   , mapMaybe
-  , mapMaybeWithKey
   , mapWithKey
   , member
   , mergeWithKey
   , notMember
   , null
   , partition
-  , partitionWithKey
   , singleton
   , size
   , toList
   , union
   , unionWith
-  , unionWithKey
   , update
-  , updateWithKey
   , valid
   )
 import Data.List qualified as L
@@ -249,14 +237,14 @@ prop_insert_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
 prop_insert_valid entries k v = valid (insert k v (fromList entries))
 
 prop_delete_model :: [(Word64, Int)] -> [Word64] -> Property
-prop_delete_model entries keys =
-  let myMap = foldl (\m k -> delete k m) (fromList entries) keys
-      refMap = foldl (\m k -> Map.delete k m) (Map.fromList entries) keys
+prop_delete_model entries ks =
+  let myMap = foldl (\m k -> delete k m) (fromList entries) ks
+      refMap = foldl (\m k -> Map.delete k m) (Map.fromList entries) ks
    in sortToList myMap === Map.toList refMap
 
 prop_delete_valid :: [(Word64, Int)] -> [Word64] -> Bool
-prop_delete_valid entries keys =
-  valid (foldl (\m k -> delete k m) (fromList entries) keys)
+prop_delete_valid entries ks =
+  valid (foldl (\m k -> delete k m) (fromList entries) ks)
 
 prop_union_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_union_model e1 e2 =

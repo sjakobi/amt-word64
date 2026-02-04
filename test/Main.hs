@@ -3,38 +3,50 @@ module Main (main) where
 import Amt.Word64.Map
   ( Word64Map
   , adjust
+  , adjustWithKey
   , alter
   , assocs
   , delete
   , difference
+  , differenceWith
   , elems
   , empty
   , filter
+  , filterWithKey
   , findWithDefault
   , foldlWithKey'
   , foldrWithKey
   , fromList
   , insert
   , insertWith
+  , insertWithKey
   , intersection
+  , intersectionWith
+  , intersectionWithKey
   , isSubmapOf
+  , isSubmapOfBy
   , keys
   , lookup
   , map
   , mapEither
+  , mapEitherWithKey
   , mapMaybe
+  , mapMaybeWithKey
   , mapWithKey
   , member
   , mergeWithKey
   , notMember
   , null
   , partition
+  , partitionWithKey
   , singleton
   , size
   , toList
   , union
   , unionWith
+  , unionWithKey
   , update
+  , updateWithKey
   , valid
   )
 import Data.List qualified as L
@@ -151,14 +163,29 @@ tests =
         , testProperty "valid invariant" prop_insertWith_valid
         ]
     , testGroup
+        "insertWithKey"
+        [ testProperty "matches Data.Map" prop_insertWithKey_model
+        , testProperty "valid invariant" prop_insertWithKey_valid
+        ]
+    , testGroup
         "adjust"
         [ testProperty "matches Data.Map" prop_adjust_model
         , testProperty "valid invariant" prop_adjust_valid
         ]
     , testGroup
+        "adjustWithKey"
+        [ testProperty "matches Data.Map" prop_adjustWithKey_model
+        , testProperty "valid invariant" prop_adjustWithKey_valid
+        ]
+    , testGroup
         "update"
         [ testProperty "matches Data.Map" prop_update_model
         , testProperty "valid invariant" prop_update_valid
+        ]
+    , testGroup
+        "updateWithKey"
+        [ testProperty "matches Data.Map" prop_updateWithKey_model
+        , testProperty "valid invariant" prop_updateWithKey_valid
         ]
     , testGroup
         "alter"
@@ -168,10 +195,12 @@ tests =
     , testGroup
         "map"
         [ testProperty "matches Data.Map" prop_map_model
+        , testProperty "valid invariant" prop_map_valid
         ]
     , testGroup
         "mapWithKey"
         [ testProperty "matches Data.Map" prop_mapWithKey_model
+        , testProperty "valid invariant" prop_mapWithKey_valid
         ]
     , testGroup
         "unionWith"
@@ -179,8 +208,14 @@ tests =
         , testProperty "valid invariant" prop_unionWith_valid
         ]
     , testGroup
+        "unionWithKey"
+        [ testProperty "matches Data.Map" prop_unionWithKey_model
+        , testProperty "valid invariant" prop_unionWithKey_valid
+        ]
+    , testGroup
         "mergeWithKey"
         [ testProperty "matches Data.Map" prop_mergeWithKey_model
+        , testProperty "valid invariant" prop_mergeWithKey_valid
         ]
     , testGroup
         "difference"
@@ -188,9 +223,24 @@ tests =
         , testProperty "valid invariant" prop_difference_valid
         ]
     , testGroup
+        "differenceWith"
+        [ testProperty "matches Data.Map" prop_differenceWith_model
+        , testProperty "valid invariant" prop_differenceWith_valid
+        ]
+    , testGroup
         "intersection"
         [ testProperty "matches Data.Map" prop_intersection_model
         , testProperty "valid invariant" prop_intersection_valid
+        ]
+    , testGroup
+        "intersectionWith"
+        [ testProperty "matches Data.Map" prop_intersectionWith_model
+        , testProperty "valid invariant" prop_intersectionWith_valid
+        ]
+    , testGroup
+        "intersectionWithKey"
+        [ testProperty "matches Data.Map" prop_intersectionWithKey_model
+        , testProperty "valid invariant" prop_intersectionWithKey_valid
         ]
     , testGroup
         "filter"
@@ -198,9 +248,19 @@ tests =
         , testProperty "valid invariant" prop_filter_valid
         ]
     , testGroup
+        "filterWithKey"
+        [ testProperty "matches Data.Map" prop_filterWithKey_model
+        , testProperty "valid invariant" prop_filterWithKey_valid
+        ]
+    , testGroup
         "partition"
         [ testProperty "matches Data.Map" prop_partition_model
         , testProperty "valid invariant" prop_partition_valid
+        ]
+    , testGroup
+        "partitionWithKey"
+        [ testProperty "matches Data.Map" prop_partitionWithKey_model
+        , testProperty "valid invariant" prop_partitionWithKey_valid
         ]
     , testGroup
         "mapMaybe"
@@ -208,9 +268,19 @@ tests =
         , testProperty "valid invariant" prop_mapMaybe_valid
         ]
     , testGroup
+        "mapMaybeWithKey"
+        [ testProperty "matches Data.Map" prop_mapMaybeWithKey_model
+        , testProperty "valid invariant" prop_mapMaybeWithKey_valid
+        ]
+    , testGroup
         "mapEither"
         [ testProperty "matches Data.Map" prop_mapEither_model
         , testProperty "valid invariant" prop_mapEither_valid
+        ]
+    , testGroup
+        "mapEitherWithKey"
+        [ testProperty "matches Data.Map" prop_mapEitherWithKey_model
+        , testProperty "valid invariant" prop_mapEitherWithKey_valid
         ]
     , testGroup
         "isSubmapOf"
@@ -521,3 +591,165 @@ prop_mergeWithKey_model e1 e2 =
       ref2 = Map.fromList e2
    in sortToList (mergeWithKey f g1 g2 m1 m2)
         === Map.toList (Map.mergeWithKey f (Map.map id) (const Map.empty) ref1 ref2)
+
+prop_insertWithKey_model :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_insertWithKey_model entries k v =
+  let f k' new old = fromIntegral k' + new + old
+      m = fromList entries
+      ref = Map.fromList entries
+   in sortToList (insertWithKey f k v m) === Map.toList (Map.insertWithKey f k v ref)
+
+prop_insertWithKey_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
+prop_insertWithKey_valid entries k v =
+  let f k' new old = fromIntegral k' + new + old
+   in valid (insertWithKey f k v (fromList entries))
+
+prop_adjustWithKey_model :: [(Word64, Int)] -> Word64 -> Property
+prop_adjustWithKey_model entries k =
+  let f k' x = fromIntegral k' + x
+      m = fromList entries
+      ref = Map.fromList entries
+   in sortToList (adjustWithKey f k m) === Map.toList (Map.adjustWithKey f k ref)
+
+prop_adjustWithKey_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_adjustWithKey_valid entries k =
+  let f k' x = fromIntegral k' + x
+   in valid (adjustWithKey f k (fromList entries))
+
+prop_updateWithKey_model :: [(Word64, Int)] -> Word64 -> Property
+prop_updateWithKey_model entries k =
+  let f k' x = if even (k' + fromIntegral x) then Just (x + 1) else Nothing
+      m = fromList entries
+      ref = Map.fromList entries
+   in sortToList (updateWithKey f k m) === Map.toList (Map.updateWithKey f k ref)
+
+prop_updateWithKey_valid :: [(Word64, Int)] -> Word64 -> Bool
+prop_updateWithKey_valid entries k =
+  let f k' x = if even (k' + fromIntegral x) then Just (x + 1) else Nothing
+   in valid (updateWithKey f k (fromList entries))
+
+prop_map_valid :: [(Word64, Int)] -> Bool
+prop_map_valid entries = valid (map (+ 1) (fromList entries))
+
+prop_mapWithKey_valid :: [(Word64, Int)] -> Bool
+prop_mapWithKey_valid entries = valid (mapWithKey (\k v -> fromIntegral k + v) (fromList entries))
+
+prop_unionWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_unionWithKey_model e1 e2 =
+  let f k x y = fromIntegral k + x + y
+      m1 = fromList e1
+      m2 = fromList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in sortToList (unionWithKey f m1 m2) === Map.toList (Map.unionWithKey f ref1 ref2)
+
+prop_unionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_unionWithKey_valid e1 e2 =
+  let f k x y = fromIntegral k + x + y
+   in valid (unionWithKey f (fromList e1) (fromList e2))
+
+prop_mergeWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_mergeWithKey_valid e1 e2 =
+  let f k x y = if even (k + fromIntegral x + fromIntegral y) then Just (x + y) else Nothing
+      g1 = filter (const True)
+      g2 = const empty
+   in valid (mergeWithKey f g1 g2 (fromList e1) (fromList e2))
+
+prop_differenceWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_differenceWith_model e1 e2 =
+  let f x y = if even (x + y) then Just (x + y) else Nothing
+      m1 = fromList e1
+      m2 = fromList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in sortToList (differenceWith f m1 m2)
+        === Map.toList (Map.differenceWith f ref1 ref2)
+
+prop_differenceWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_differenceWith_valid e1 e2 =
+  let f x y = if even (x + y) then Just (x + y) else Nothing
+   in valid (differenceWith f (fromList e1) (fromList e2))
+
+prop_intersectionWith_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersectionWith_model e1 e2 =
+  let f x y = x + y
+      m1 = fromList e1
+      m2 = fromList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in sortToList (intersectionWith f m1 m2)
+        === Map.toList (Map.intersectionWith f ref1 ref2)
+
+prop_intersectionWith_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_intersectionWith_valid e1 e2 =
+  let f x y = x + y
+   in valid (intersectionWith f (fromList e1) (fromList e2))
+
+prop_intersectionWithKey_model :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_intersectionWithKey_model e1 e2 =
+  let f k x y = fromIntegral k + x + y
+      m1 = fromList e1
+      m2 = fromList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in sortToList (intersectionWithKey f m1 m2)
+        === Map.toList (Map.intersectionWithKey f ref1 ref2)
+
+prop_intersectionWithKey_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_intersectionWithKey_valid e1 e2 =
+  let f k x y = fromIntegral k + x + y
+   in valid (intersectionWithKey f (fromList e1) (fromList e2))
+
+prop_filterWithKey_model :: [(Word64, Int)] -> Property
+prop_filterWithKey_model entries =
+  let f k v = even (k + fromIntegral v)
+      m = fromList entries
+      ref = Map.fromList entries
+   in sortToList (filterWithKey f m) === Map.toList (Map.filterWithKey f ref)
+
+prop_filterWithKey_valid :: [(Word64, Int)] -> Bool
+prop_filterWithKey_valid entries =
+  let f k v = even (k + fromIntegral v)
+   in valid (filterWithKey f (fromList entries))
+
+prop_partitionWithKey_model :: [(Word64, Int)] -> Property
+prop_partitionWithKey_model entries =
+  let f k v = even (k + fromIntegral v)
+      m = fromList entries
+      ref = Map.fromList entries
+      (l, r) = partitionWithKey f m
+      (lRef, rRef) = Map.partitionWithKey f ref
+   in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
+
+prop_partitionWithKey_valid :: [(Word64, Int)] -> Bool
+prop_partitionWithKey_valid entries =
+  let f k v = even (k + fromIntegral v)
+      (l, r) = partitionWithKey f (fromList entries)
+   in valid l && valid r
+
+prop_mapMaybeWithKey_model :: [(Word64, Int)] -> Property
+prop_mapMaybeWithKey_model entries =
+  let f k v = if even (k + fromIntegral v) then Just (v + 1) else Nothing
+      m = fromList entries
+      ref = Map.fromList entries
+   in sortToList (mapMaybeWithKey f m) === Map.toList (Map.mapMaybeWithKey f ref)
+
+prop_mapMaybeWithKey_valid :: [(Word64, Int)] -> Bool
+prop_mapMaybeWithKey_valid entries =
+  let f k v = if even (k + fromIntegral v) then Just (v + 1) else Nothing
+   in valid (mapMaybeWithKey f (fromList entries))
+
+prop_mapEitherWithKey_model :: [(Word64, Int)] -> Property
+prop_mapEitherWithKey_model entries =
+  let f k v = if even (k + fromIntegral v) then Left (v + 1) else Right (v + 2)
+      m = fromList entries
+      ref = Map.fromList entries
+      (l, r) = mapEitherWithKey f m
+      (lRef, rRef) = Map.mapEitherWithKey f ref
+   in (sortToList l, sortToList r) === (Map.toList lRef, Map.toList rRef)
+
+prop_mapEitherWithKey_valid :: [(Word64, Int)] -> Bool
+prop_mapEitherWithKey_valid entries =
+  let f k v = if even (k + fromIntegral v) then Left (v + 1) else Right (v + 2)
+      (l, r) = mapEitherWithKey f (fromList entries)
+   in valid l && valid r

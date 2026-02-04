@@ -31,20 +31,21 @@ data Index = NoIndex | Index !Bitmap !Int
 type Shift = Int
 
 valid :: Word64Map a -> Bool
-valid = go 0 0
+valid = go True 0 0
  where
-  go shift prefix (Leaf k _) =
+  go _ shift prefix (Leaf k _) =
     let mask = if shift >= 64 then complement 0 else (1 `Bits.shiftL` shift) - 1
      in (k .&. mask) == prefix
-  go shift prefix (Branch (BM bm) ary) =
+  go isRoot shift prefix (Branch (BM bm) ary) =
     let children = Foldable.toList ary
         bits = [i | i <- [0 .. 63], testBit bm i]
         n = sizeofSmallArray ary
         s = size (Branch (BM bm) ary)
      in popCount bm == n
           && (s == 0 || s >= 2)
+          && (isRoot || bm /= 0)
           && all
-            (\(i, child) -> go (shift + 6) (prefix .|. (fromIntegral i `Bits.shiftL` shift)) child)
+            (\(i, child) -> go False (shift + 6) (prefix .|. (fromIntegral i `Bits.shiftL` shift)) child)
             (zip bits children)
 
 index :: Shift -> Word64 -> Bitmap -> Index

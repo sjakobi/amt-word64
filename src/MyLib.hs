@@ -20,6 +20,22 @@ import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import Prelude hiding (lookup, null)
 
+-- | An array-mapped trie with 64-bit word keys.
+--
+-- === Invariants
+--
+-- 1. __Canonical empty__: The empty map is represented by a 'Branch' with an
+--    empty bitmap.
+--
+-- 2. __No redundant branches__: A 'Branch' must have either exactly zero
+--    children (only if it is the root) or at least two children. If a branch
+--    would have only one child, that child must be collapsed upwards.
+--
+-- 3. __Bitmap consistency__: The number of set bits in the 'Bitmap' must
+--    exactly match the size of the 'SmallArray'.
+--
+-- 4. __Prefix consistency__: For any node at 'Shift' @s@, all keys in its
+--    subtree must share the same prefix for the bits more significant than @s@.
 data Word64Map a
   = Branch !Bitmap !(SmallArray (Word64Map a))
   | Leaf !Word64 a

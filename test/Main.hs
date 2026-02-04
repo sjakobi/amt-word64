@@ -2,7 +2,7 @@ module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Data.Word (Word64)
-import MyLib (delete, fromList, lookup, null, singleton, size, toList, union, valid)
+import MyLib (delete, empty, fromList, insert, lookup, null, singleton, size, toList, union, valid)
 import Test.Tasty
 import Test.Tasty.QuickCheck
 import Prelude hiding (lookup, null)
@@ -14,71 +14,114 @@ tests :: TestTree
 tests =
   testGroup
     "Word64Map tests"
-    [ testProperty "lookup matches Data.Map" prop_lookup
-    , testProperty "valid invariant holds" prop_valid
-    , testProperty "singleton matches Data.Map" prop_singleton
-    , testProperty "null matches Data.Map" prop_null
-    , testProperty "size matches Data.Map" prop_size
-    , testProperty "fromList matches Data.Map" prop_fromList
-    , testProperty "toList matches Data.Map" prop_toList
-    , testProperty "delete matches Data.Map" prop_delete
-    , testProperty "union matches Data.Map" prop_union
+    [ testGroup "empty"
+        [ testProperty "valid invariant" $ valid (empty @Int)
+        ]
+    , testGroup "singleton"
+        [ testProperty "matches Data.Map" prop_singleton_model
+        , testProperty "valid invariant" prop_singleton_valid
+        ]
+    , testGroup "insert"
+        [ testProperty "matches Data.Map" prop_insert_model
+        , testProperty "valid invariant" prop_insert_valid
+        ]
+    , testGroup "delete"
+        [ testProperty "matches Data.Map" prop_delete_model
+        , testProperty "valid invariant" prop_delete_valid
+        ]
+    , testGroup "union"
+        [ testProperty "matches Data.Map" prop_union_model
+        , testProperty "valid invariant" prop_union_valid
+        ]
+    , testGroup "fromList"
+        [ testProperty "matches Data.Map" prop_fromList_model
+        , testProperty "valid invariant" prop_fromList_valid
+        ]
+    , testGroup "toList"
+        [ testProperty "matches Data.Map" prop_toList_model
+        ]
+    , testGroup "null"
+        [ testProperty "matches Data.Map" prop_null_model
+        ]
+    , testGroup "size"
+        [ testProperty "matches Data.Map" prop_size_model
+        ]
+    , testGroup "lookup"
+        [ testProperty "matches Data.Map" prop_lookup_model
+        ]
     ]
 
-prop_lookup :: [(Word64, Int)] -> [Word64] -> Bool
-prop_lookup entries keys =
-  let myMap = fromList entries
-      refMap = Map.fromList entries
-   in all (\k -> lookup k myMap == Map.lookup k refMap) (keys ++ map fst entries) && valid myMap
-
-prop_valid :: [(Word64, Int)] -> Bool
-prop_valid entries =
-  let myMap = fromList entries
-   in valid myMap
-
-prop_singleton :: Word64 -> Int -> Bool
-prop_singleton k v =
+prop_singleton_model :: Word64 -> Int -> Bool
+prop_singleton_model k v =
   let myMap = singleton k v
       refMap = Map.singleton k v
-   in lookup k myMap == Map.lookup k refMap && valid myMap
+   in lookup k myMap == Map.lookup k refMap
 
-prop_null :: [(Word64, Int)] -> Bool
-prop_null entries =
-  let myMap = fromList entries
-      refMap = Map.fromList entries
-   in null myMap == Map.null refMap && valid myMap
+prop_singleton_valid :: Word64 -> Int -> Bool
+prop_singleton_valid k v = valid (singleton k v)
 
-prop_size :: [(Word64, Int)] -> Bool
-prop_size entries =
-  let myMap = fromList entries
-      refMap = Map.fromList entries
-   in size myMap == Map.size refMap && valid myMap
+prop_insert_model :: [(Word64, Int)] -> Word64 -> Int -> Bool
+prop_insert_model entries k v =
+  let myMap = insert k v (fromList entries)
+      refMap = Map.insert k v (Map.fromList entries)
+   in all (\k' -> lookup k' myMap == Map.lookup k' refMap) (k : map fst entries)
 
-prop_fromList :: [(Word64, Int)] -> Bool
-prop_fromList entries =
-  let myMap = fromList entries
-      refMap = Map.fromList entries
-   in all (\k -> lookup k myMap == Map.lookup k refMap) (map fst entries) && valid myMap
+prop_insert_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
+prop_insert_valid entries k v = valid (insert k v (fromList entries))
 
-prop_toList :: [(Word64, Int)] -> Bool
-prop_toList entries =
-  let myMap = fromList entries
-      refMap = Map.fromList entries
-      myList = toList myMap
-   in Map.fromList myList == refMap && valid myMap
-
-prop_delete :: [(Word64, Int)] -> [Word64] -> Bool
-prop_delete entries keys =
+prop_delete_model :: [(Word64, Int)] -> [Word64] -> Bool
+prop_delete_model entries keys =
   let myMap = foldl (\m k -> delete k m) (fromList entries) keys
       refMap = foldl (\m k -> Map.delete k m) (Map.fromList entries) keys
-   in all (\k -> lookup k myMap == Map.lookup k refMap) (keys ++ map fst entries) && valid myMap
+   in all (\k -> lookup k myMap == Map.lookup k refMap) (keys ++ map fst entries)
 
-prop_union :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
-prop_union e1 e2 =
+prop_delete_valid :: [(Word64, Int)] -> [Word64] -> Bool
+prop_delete_valid entries keys =
+  valid (foldl (\m k -> delete k m) (fromList entries) keys)
+
+prop_union_model :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_union_model e1 e2 =
   let m1 = fromList e1
       m2 = fromList e2
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
       myUnion = union m1 m2
       refUnion = Map.union ref1 ref2
-   in all (\k -> lookup k myUnion == Map.lookup k refUnion) (map fst e1 ++ map fst e2) && valid myUnion
+   in all (\k -> lookup k myUnion == Map.lookup k refUnion) (map fst e1 ++ map fst e2)
+
+prop_union_valid :: [(Word64, Int)] -> [(Word64, Int)] -> Bool
+prop_union_valid e1 e2 = valid (union (fromList e1) (fromList e2))
+
+prop_fromList_model :: [(Word64, Int)] -> Bool
+prop_fromList_model entries =
+  let myMap = fromList entries
+      refMap = Map.fromList entries
+   in all (\k -> lookup k myMap == Map.lookup k refMap) (map fst entries)
+
+prop_fromList_valid :: [(Word64, Int)] -> Bool
+prop_fromList_valid entries = valid (fromList entries)
+
+prop_toList_model :: [(Word64, Int)] -> Bool
+prop_toList_model entries =
+  let myMap = fromList entries
+      refMap = Map.fromList entries
+      myList = toList myMap
+   in Map.fromList myList == refMap
+
+prop_null_model :: [(Word64, Int)] -> Bool
+prop_null_model entries =
+  let myMap = fromList entries
+      refMap = Map.fromList entries
+   in null myMap == Map.null refMap
+
+prop_size_model :: [(Word64, Int)] -> Bool
+prop_size_model entries =
+  let myMap = fromList entries
+      refMap = Map.fromList entries
+   in size myMap == Map.size refMap
+
+prop_lookup_model :: [(Word64, Int)] -> [Word64] -> Bool
+prop_lookup_model entries keys =
+  let myMap = fromList entries
+      refMap = Map.fromList entries
+   in all (\k -> lookup k myMap == Map.lookup k refMap) (keys ++ map fst entries)

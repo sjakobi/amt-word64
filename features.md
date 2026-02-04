@@ -9,7 +9,7 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 - [ ] **`notMember`**: Not implemented.
 - [x] **`lookup`**: Implemented.
 - [ ] **`findWithDefault`**: Not implemented.
-- [ ] **`lookupLT`, `lookupGT`, `lookupLE`, `lookupGE`**: Not implemented.
+- [ ] **`lookupLT`, `lookupGT`, `lookupLE`, `lookupGE`**: Not planned.
 
 ## Construction
 - [x] **`empty`**: Implemented.
@@ -44,11 +44,11 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 - [ ] **`mapMaybe` / `mapEither`**: Not implemented.
 
 ## Min / Max
-- [ ] **`findMin` / `findMax`**: Not implemented.
-- [ ] **`deleteMin` / `deleteMax`**: Not implemented.
-- [ ] **`minView` / `maxView`**: Not implemented.
+- [ ] **`findMin` / `findMax`**: Not planned.
+- [ ] **`deleteMin` / `deleteMax`**: Not planned.
+- [ ] **`minView` / `maxView`**: Not planned.
 
 ## Submap
-- [ ] **`split`**: Not implemented.
-- [ ] **`splitLookup`**: Not implemented.
+- [ ] **`split`**: Not planned.
+- [ ] **`splitLookup`**: Not planned.
 - [ ] **`isSubmapOf` / `isSubmapOfBy`**: Not implemented.

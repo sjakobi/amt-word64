@@ -1,9 +1,6 @@
 module Main (main) where
 
-import Data.List qualified as L
-import Data.Map.Strict qualified as Map
-import Data.Word (Word64)
-import MyLib
+import Amt.Word64.Map
   ( Word64Map
   , adjust
   , adjustWithKey
@@ -52,6 +49,9 @@ import MyLib
   , updateWithKey
   , valid
   )
+import Data.List qualified as L
+import Data.Map.Strict qualified as Map
+import Data.Word (Word64)
 import Test.Tasty
 import Test.Tasty.QuickCheck
 import Prelude hiding (filter, lookup, map, null)

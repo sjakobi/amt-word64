@@ -1,4 +1,4 @@
-module MyLib
+module Amt.Word64.Map
   ( Word64Map
   , empty
   , singleton

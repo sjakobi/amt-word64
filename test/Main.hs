@@ -57,7 +57,10 @@ import Test.Tasty.QuickCheck
 import Prelude hiding (filter, lookup, map, null)
 
 main :: IO ()
-main = defaultMain $ localOption (QuickCheckTests 500) $ localOption (QuickCheckMaxSize 500) tests
+main =
+  defaultMain $
+    localOption (QuickCheckTests 500) $
+      localOption (QuickCheckMaxSize 500) tests
 
 tests :: TestTree
 tests =
@@ -239,7 +242,8 @@ prop_singleton_valid k v = valid (singleton k v)
 
 prop_insert_model :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_insert_model entries k v =
-  sortToList (insert k v (fromList entries)) === Map.toList (Map.insert k v (Map.fromList entries))
+  sortToList (insert k v (fromList entries))
+    === Map.toList (Map.insert k v (Map.fromList entries))
 
 prop_insert_valid :: [(Word64, Int)] -> Word64 -> Int -> Bool
 prop_insert_valid entries k v = valid (insert k v (fromList entries))
@@ -300,7 +304,8 @@ prop_notMember_model entries k =
 
 prop_findWithDefault_model :: [(Word64, Int)] -> Int -> Word64 -> Property
 prop_findWithDefault_model entries def k =
-  findWithDefault def k (fromList entries) === Map.findWithDefault def k (Map.fromList entries)
+  findWithDefault def k (fromList entries)
+    === Map.findWithDefault def k (Map.fromList entries)
 
 prop_keys_model :: [(Word64, Int)] -> Property
 prop_keys_model entries =

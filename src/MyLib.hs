@@ -114,7 +114,8 @@ valid = go True 0 0
           && (s == 0 || s >= 2)
           && (isRoot || bm /= 0)
           && all
-            (\(i, child) -> go False (shift + 6) (prefix .|. (fromIntegral i `Bits.shiftL` shift)) child)
+            ( \(i, child) -> go False (shift + 6) (prefix .|. (fromIntegral i `Bits.shiftL` shift)) child
+            )
             (zip bits children)
 
 index :: Shift -> Word64 -> Bitmap -> Index
@@ -202,7 +203,8 @@ insert k v m = case m of
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
 
-insertWithKey :: (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+insertWithKey ::
+  (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWithKey f k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
@@ -287,7 +289,9 @@ delete k m = go 0 m
                       0 -> empty
                       1 ->
                         let remainingChild = indexSmallArray ary (if i == 0 then 1 else 0)
-                         in if size remainingChild == 1 then remainingChild else Branch (BM newBm) (removeAt i ary)
+                         in if size remainingChild == 1
+                              then remainingChild
+                              else Branch (BM newBm) (removeAt i ary)
                       _ -> Branch (BM newBm) (removeAt i ary)
               else
                 if size newChild == 1 && popCount bm == 1
@@ -314,7 +318,8 @@ adjustWithKey f k m = go 0 m
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
 update f = updateWithKey (\_ x -> f x)
 
-updateWithKey :: (Word64 -> a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+updateWithKey ::
+  (Word64 -> a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
 updateWithKey f k = alter (\v -> v >>= f k) k
 
 alter :: (Maybe a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
@@ -376,7 +381,8 @@ unionAtShift shift m1 m2 = case (m1, m2) of
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith f = unionWithKey (\_ x y -> f x y)
 
-unionWithKey :: (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWithKey ::
+  (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWithKey f m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
@@ -396,7 +402,8 @@ unionWithKey f m1 m2 = case (m1, m2) of
                 (Nothing, Nothing) -> error "unionWithKey: impossible"
      in Branch (BM newBm) (smallArrayFromList newAryList)
 
-unionWithKeyAtShift :: Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWithKeyAtShift ::
+  Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
   (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
@@ -410,7 +417,12 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
               mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
            in case (mIndex1, mIndex2) of
-                (Just i1, Just i2) -> unionWithKeyAtShift (shift + 6) f (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                (Just i1, Just i2) ->
+                  unionWithKeyAtShift
+                    (shift + 6)
+                    f
+                    (indexSmallArray ary1 i1)
+                    (indexSmallArray ary2 i2)
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "unionWithKey: impossible"
@@ -519,7 +531,8 @@ mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
 difference :: Word64Map a -> Word64Map b -> Word64Map a
 difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2
 
-differenceWith :: (a -> b -> Maybe a) -> Word64Map a -> Word64Map b -> Word64Map a
+differenceWith ::
+  (a -> b -> Maybe a) -> Word64Map a -> Word64Map b -> Word64Map a
 differenceWith f m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
@@ -550,7 +563,8 @@ intersection m1 m2 = intersectionWith (\x _ -> x) m1 m2
 intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
 intersectionWith f = intersectionWithKey (\_ x y -> f x y)
 
-intersectionWithKey :: (Word64 -> a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
+intersectionWithKey ::
+  (Word64 -> a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
 intersectionWithKey f m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
@@ -591,7 +605,8 @@ filterWithKey f (Branch (BM bm) ary) =
 partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partition f = partitionWithKey (\_ x -> f x)
 
-partitionWithKey :: (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
+partitionWithKey ::
+  (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partitionWithKey f (Leaf k v)
   | f k v = (Leaf k v, empty)
   | otherwise = (empty, Leaf k v)
@@ -625,7 +640,8 @@ mapMaybeWithKey f (Branch (BM bm) ary) =
 mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
 mapEither f = mapEitherWithKey (\_ x -> f x)
 
-mapEitherWithKey :: (Word64 -> a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
+mapEitherWithKey ::
+  (Word64 -> a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
 mapEitherWithKey f (Leaf k v) = case f k v of
   Left b -> (Leaf k b, empty)
   Right c -> (empty, Leaf k c)

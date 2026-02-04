@@ -1,4 +1,4 @@
-column-limit: 100
+column-limit: 80
 indentation: 2
 newlines-between-decls: 1
 single-constraint-parens: never

@@ -82,6 +82,8 @@ test-suite amt-word64-test
     -- Import common warning flags.
     import:           warnings
 
+    ghc-options:      -threaded -with-rtsopts=-N
+
     -- Base language which the package is written in.
     default-language: GHC2024
 

@@ -1,8 +1,7 @@
 module Main (main) where
 
 import Amt.Word64.Map
-  ( InvariantViolation (..)
-  , Word64Map
+  ( Word64Map
   , adjust
   , adjustWithKey
   , alter

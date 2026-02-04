@@ -1,17 +1,24 @@
 module MyLib
   ( Word64Map
   , empty
+  , singleton
+  , null
+  , size
   , insert
+  , delete
   , lookup
+  , union
+  , fromList
+  , toList
   , valid
   ) where
 
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
-import Data.Foldable (toList)
+import Data.Foldable qualified as Foldable
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, null)
 
 data Word64Map a
   = Branch !Bitmap !(SmallArray (Word64Map a))
@@ -30,7 +37,7 @@ valid = go 0 0
     let mask = if shift >= 64 then complement 0 else (1 `Bits.shiftL` shift) - 1
      in (k .&. mask) == prefix
   go shift prefix (Branch (BM bm) ary) =
-    let children = toList ary
+    let children = Foldable.toList ary
         bits = [i | i <- [0 .. 63], testBit bm i]
      in popCount bm == sizeofSmallArray ary
           && all
@@ -50,6 +57,17 @@ empty :: Word64Map a
 empty = Branch (BM 0) mempty
 {-# NOINLINE empty #-}
 
+singleton :: Word64 -> a -> Word64Map a
+singleton = Leaf
+
+null :: Word64Map a -> Bool
+null (Branch (BM 0) _) = True
+null _ = False
+
+size :: Word64Map a -> Int
+size (Leaf _ _) = 1
+size (Branch _ ary) = Foldable.sum (fmap size ary)
+
 lookup :: Word64 -> Word64Map a -> Maybe a
 lookup k = go 0
  where
@@ -62,37 +80,104 @@ lookup k = go 0
       Index _ i -> go (shift + 6) (indexSmallArray ary i)
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
-insert k v m = go 0 m
+insert k v m = insertAtShift 0 k v m
+
+insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertAtShift s k v m = case m of
+  Leaf k' v'
+    | k == k' -> Leaf k v
+    | otherwise -> split s k v k' v'
+  Branch (BM bm) ary ->
+    case index s k (BM bm) of
+      Index _ i ->
+        let child = indexSmallArray ary i
+            newChild = insertAtShift (s + 6) k v child
+         in Branch (BM bm) (updateAt i newChild ary)
+      NoIndex ->
+        let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` s) .&. 0x3f)
+            i = popCount (bm .&. (bit - 1))
+         in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+
+split :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
+split shift k1 v1 k2 v2 =
+  let idx1 = fromIntegral ((k1 `Bits.shiftR` shift) .&. 0x3f)
+      idx2 = fromIntegral ((k2 `Bits.shiftR` shift) .&. 0x3f)
+   in if idx1 /= idx2
+        then
+          let bm = (1 `Bits.shiftL` idx1) .|. (1 `Bits.shiftL` idx2)
+              ary =
+                if idx1 < idx2
+                  then smallArrayFromList [Leaf k1 v1, Leaf k2 v2]
+                  else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
+           in Branch (BM bm) ary
+        else
+          let child = split (shift + 6) k1 v1 k2 v2
+              bm = 1 `Bits.shiftL` idx1
+           in Branch (BM bm) (smallArrayFromList [child])
+
+delete :: Word64 -> Word64Map a -> Word64Map a
+delete k m = go 0 m
  where
-  go shift (Leaf k' v')
-    | k == k' = Leaf k v
-    | otherwise = split shift k v k' v'
+  go _ (Leaf k' _) | k == k' = empty
+  go _ leaf@(Leaf _ _) = leaf
   go shift (Branch (BM bm) ary) =
+    case index shift k (BM bm) of
+      NoIndex -> Branch (BM bm) ary
+      Index (BM bit) i ->
+        let child = indexSmallArray ary i
+            newChild = go (shift + 6) child
+         in if null newChild
+              then
+                let newBm = bm .&. complement bit
+                 in if newBm == 0
+                      then empty
+                      else Branch (BM newBm) (removeAt i ary)
+              else Branch (BM bm) (updateAt i newChild ary)
+
+union :: Word64Map a -> Word64Map a -> Word64Map a
+union m1 m2 = go 0 m1 m2
+ where
+  go shift mm1 mm2 = case (mm1, mm2) of
+    (Leaf k1 v1, _) -> insertAtShift shift k1 v1 mm2
+    (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 mm1
+    (Branch (BM 0) _, _) -> mm2
+    (_, Branch (BM 0) _) -> mm1
+    (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
+      let newBm = bm1 .|. bm2
+          bits = [b | b <- [0 .. 63], testBit newBm b]
+          newAryList = flip map bits $ \b ->
+            let bit = 1 `Bits.shiftL` b
+                mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
+                mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
+             in case (mIndex1, mIndex2) of
+                  (Just i1, Just i2) -> go (shift + 6) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                  (Just i1, Nothing) -> indexSmallArray ary1 i1
+                  (Nothing, Just i2) -> indexSmallArray ary2 i2
+                  (Nothing, Nothing) -> error "union: impossible"
+       in Branch (BM newBm) (smallArrayFromList newAryList)
+
+insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertIfNotExistsAtShift shift k v m = case m of
+  Leaf k' v'
+    | k == k' -> m
+    | otherwise -> split shift k v k' v' -- Note: v2 is kept, but here v is the new one and k' v' is existing. Wait, if k==k' we want to keep k'v'. split here would be used if they collide at this level.
+  Branch (BM bm) ary ->
     case index shift k (BM bm) of
       Index _ i ->
         let child = indexSmallArray ary i
-            newChild = go (shift + 6) child
+            newChild = insertIfNotExistsAtShift (shift + 6) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       NoIndex ->
         let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
             i = popCount (bm .&. (bit - 1))
          in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
-  split shift k1 v1 k2 v2 =
-    let idx1 = fromIntegral ((k1 `Bits.shiftR` shift) .&. 0x3f)
-        idx2 = fromIntegral ((k2 `Bits.shiftR` shift) .&. 0x3f)
-     in if idx1 /= idx2
-          then
-            let bm = (1 `Bits.shiftL` idx1) .|. (1 `Bits.shiftL` idx2)
-                ary =
-                  if idx1 < idx2
-                    then smallArrayFromList [Leaf k1 v1, Leaf k2 v2]
-                    else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
-             in Branch (BM bm) ary
-          else
-            let child = split (shift + 6) k1 v1 k2 v2
-                bm = 1 `Bits.shiftL` idx1
-             in Branch (BM bm) (smallArrayFromList [child])
+fromList :: [(Word64, a)] -> Word64Map a
+fromList = Foldable.foldl' (\m (k, v) -> insert k v m) empty
+
+toList :: Word64Map a -> [(Word64, a)]
+toList (Leaf k v) = [(k, v)]
+toList (Branch _ ary) = concatMap toList (Foldable.toList ary)
 
 insertAt :: Int -> a -> SmallArray a -> SmallArray a
 insertAt i a ary = runSmallArray $ do
@@ -108,4 +193,12 @@ updateAt i a ary = runSmallArray $ do
   mary <- newSmallArray n a
   copySmallArray mary 0 ary 0 n
   writeSmallArray mary i a
+  return mary
+
+removeAt :: Int -> SmallArray a -> SmallArray a
+removeAt i ary = runSmallArray $ do
+  let n = sizeofSmallArray ary
+  mary <- newSmallArray (n - 1) (error "removeAt")
+  copySmallArray mary 0 ary 0 i
+  copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary

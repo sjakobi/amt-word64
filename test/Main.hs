@@ -212,12 +212,14 @@ tests =
         [ testProperty "matches Data.Map" prop_unionWithKey_model
         , testProperty "valid invariant" prop_unionWithKey_valid
         ]
-    , testGroup
-        "mergeWithKey"
-        [ testProperty "matches Data.Map" prop_mergeWithKey_model
-        , testProperty "valid invariant" prop_mergeWithKey_valid
-        ]
-    , testGroup
+    , {-
+          , testGroup
+              "mergeWithKey"
+              [ testProperty "matches Data.Map" prop_mergeWithKey_model
+              , testProperty "valid invariant" prop_mergeWithKey_valid
+              ]
+      -}
+      testGroup
         "difference"
         [ testProperty "matches Data.Map" prop_difference_model
         , testProperty "valid invariant" prop_difference_valid

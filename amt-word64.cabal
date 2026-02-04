@@ -105,4 +105,6 @@ test-suite amt-word64-test
         base ^>=4.21.0.0,
         amt-word64,
         containers,
-        QuickCheck
+        QuickCheck,
+        tasty,
+        tasty-quickcheck

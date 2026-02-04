@@ -1,12 +1,29 @@
 module Main (main) where
 
-import Control.Monad (unless)
 import Data.Map.Strict qualified as Map
 import Data.Word (Word64)
 import MyLib (delete, fromList, lookup, null, singleton, size, toList, union, valid)
-import System.Exit (exitFailure)
-import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.QuickCheck
 import Prelude hiding (lookup, null)
+
+main :: IO ()
+main = defaultMain tests
+
+tests :: TestTree
+tests =
+  testGroup
+    "Word64Map tests"
+    [ testProperty "lookup matches Data.Map" prop_lookup
+    , testProperty "valid invariant holds" prop_valid
+    , testProperty "singleton matches Data.Map" prop_singleton
+    , testProperty "null matches Data.Map" prop_null
+    , testProperty "size matches Data.Map" prop_size
+    , testProperty "fromList matches Data.Map" prop_fromList
+    , testProperty "toList matches Data.Map" prop_toList
+    , testProperty "delete matches Data.Map" prop_delete
+    , testProperty "union matches Data.Map" prop_union
+    ]
 
 prop_lookup :: [(Word64, Int)] -> [Word64] -> Bool
 prop_lookup entries keys =
@@ -65,19 +82,3 @@ prop_union e1 e2 =
       myUnion = union m1 m2
       refUnion = Map.union ref1 ref2
    in all (\k -> lookup k myUnion == Map.lookup k refUnion) (map fst e1 ++ map fst e2) && valid myUnion
-
-main :: IO ()
-main = do
-  results <-
-    sequence
-      [ quickCheckResult prop_lookup
-      , quickCheckResult prop_valid
-      , quickCheckResult prop_singleton
-      , quickCheckResult prop_null
-      , quickCheckResult prop_size
-      , quickCheckResult prop_fromList
-      , quickCheckResult prop_toList
-      , quickCheckResult prop_delete
-      , quickCheckResult prop_union
-      ]
-  unless (all isSuccess results) exitFailure

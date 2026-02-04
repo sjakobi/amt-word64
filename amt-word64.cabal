@@ -103,4 +103,6 @@ test-suite amt-word64-test
     -- Test dependencies.
     build-depends:
         base ^>=4.21.0.0,
-        amt-word64
+        amt-word64,
+        containers,
+        QuickCheck

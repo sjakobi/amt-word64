@@ -69,7 +69,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:
-        base ^>=4.21.0.0,
+        base >=4.20 && <4.23,
         primitive ^>=0.9.0.0
 
     -- Directories containing source files.
@@ -102,7 +102,7 @@ test-suite amt-word64-test
 
     -- Test dependencies.
     build-depends:
-        base ^>=4.21.0.0,
+        base >=4.20 && <4.23,
         amt-word64,
         containers,
         QuickCheck,

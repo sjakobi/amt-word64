@@ -17,6 +17,19 @@ data Word64Map a =
 
 newtype Bitmap = BM Word64
 
+data Index = NoIndex | Index !Bitmap !Int
+
+type Shift = Int
+
+index :: Shift -> Word64 -> Bitmap -> Index
+index shift k (BM bm) =
+  let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
+      i = popCount (bm .&. (bit - 1))
+  in if bm .&. bit == 0
+     then NoIndex
+     else Index (BM bit) i
+{-# inline index #-}
+
 empty :: Word64Map a
 empty = Branch (BM 0) mempty
 {-# noinline empty #-}
@@ -28,12 +41,9 @@ lookup k = go 0
       | k == k' = Just v
       | otherwise = Nothing
     go shift (Branch (BM bm) ary) =
-      let idx = fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
-          bit = 1 `Bits.shiftL` idx
-      in if bm .&. bit == 0
-         then Nothing
-         else let i = popCount (bm .&. (bit - 1))
-              in go (shift + 6) (indexSmallArray ary i)
+      case index shift k (BM bm) of
+        NoIndex -> Nothing
+        Index _ i -> go (shift + 6) (indexSmallArray ary i)
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
 insert k v m = go 0 m
@@ -42,15 +52,15 @@ insert k v m = go 0 m
       | k == k' = Leaf k v
       | otherwise = split shift k v k' v'
     go shift (Branch (BM bm) ary) =
-      let idx = fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
-          bit = 1 `Bits.shiftL` idx
-      in if bm .&. bit == 0
-         then let i = popCount (bm .&. (bit - 1))
-              in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
-         else let i = popCount (bm .&. (bit - 1))
-                  child = indexSmallArray ary i
-                  newChild = go (shift + 6) child
-              in Branch (BM bm) (updateAt i newChild ary)
+      case index shift k (BM bm) of
+        Index _ i ->
+          let child = indexSmallArray ary i
+              newChild = go (shift + 6) child
+          in Branch (BM bm) (updateAt i newChild ary)
+        NoIndex ->
+          let bit = 1 `Bits.shiftL` fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f)
+              i = popCount (bm .&. (bit - 1))
+          in Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
     split shift k1 v1 k2 v2 =
       let idx1 = fromIntegral ((k1 `Bits.shiftR` shift) .&. 0x3f)

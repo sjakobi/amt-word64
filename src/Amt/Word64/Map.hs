@@ -98,6 +98,9 @@ instance Functor Word64Map where
   fmap f (Leaf k v) = Leaf k (f v)
   fmap f (Branch bm ary) = Branch bm (fmap (fmap f) ary)
 
+instance Show a => Show (Word64Map a) where
+  show m = "fromList " ++ show (toList m)
+
 instance Foldable Word64Map where
   foldr f acc (Leaf _ v) = f v acc
   foldr f acc (Branch _ ary) = Foldable.foldr (flip (foldr f)) acc ary

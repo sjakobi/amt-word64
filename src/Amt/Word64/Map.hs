@@ -107,6 +107,8 @@ instance Foldable Word64Map where
 
   length = size
 
+  null = null
+
 instance Traversable Word64Map where
   traverse f (Leaf k v) = Leaf k <$> f v
   traverse f (Branch bm ary) = Branch bm <$> traverse (traverse f) ary

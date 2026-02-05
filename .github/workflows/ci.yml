@@ -73,6 +73,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.ghc }}-cabal-
 
+      - name: Update hackage index
+        run: cabal update
+
       - name: Install dependencies
         run: cabal build --only-dependencies --enable-tests
 

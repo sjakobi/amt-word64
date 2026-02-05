@@ -1,4 +1,5 @@
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Amt.Word64.Map
   ( Word64Map
@@ -52,6 +53,7 @@ module Amt.Word64.Map
   , InvariantViolation (..)
   ) where
 
+import Control.Monad.ST (ST, runST)
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
 import Data.Foldable qualified as Foldable
@@ -677,16 +679,7 @@ filter :: (a -> Bool) -> Word64Map a -> Word64Map a
 filter f = filterWithKey (\_ x -> f x)
 
 filterWithKey :: (Word64 -> a -> Bool) -> Word64Map a -> Word64Map a
-filterWithKey f m = go m
- where
-  go (Leaf k v) = if f k v then Leaf k v else empty
-  go (Branch (BM bm) ary) =
-    let results = fmap go (Foldable.toList ary)
-        bits = [b | b <- [0 .. 63], testBit bm b]
-        pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
-        newAry = smallArrayFromList [r | (_, r) <- pairs]
-     in collapse (BM newBm) newAry
+filterWithKey f = mapMaybeWithKey (\k v -> if f k v then Just v else Nothing)
 
 partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partition f = partitionWithKey (\_ x -> f x)
@@ -715,19 +708,50 @@ partitionWithKey f m = go m
 mapMaybe :: (a -> Maybe b) -> Word64Map a -> Word64Map b
 mapMaybe f = mapMaybeWithKey (\_ x -> f x)
 
-mapMaybeWithKey :: (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b
+mapMaybeWithKey ::
+  forall a b. (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b
 mapMaybeWithKey f m = go m
  where
   go (Leaf k v) = case f k v of
     Nothing -> empty
     Just v' -> Leaf k v'
+  go (Branch (BM 0) _) = empty
   go (Branch (BM bm) ary) =
-    let results = fmap go (Foldable.toList ary)
-        bits = [b | b <- [0 .. 63], testBit bm b]
-        pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
-        newAry = smallArrayFromList [r | (_, r) <- pairs]
+    let (newBm, newAry) = mapMaybeBranch bm ary
      in collapse (BM newBm) newAry
+
+  mapMaybeBranch ::
+    Word64 -> SmallArray (Word64Map a) -> (Word64, SmallArray (Word64Map b))
+  mapMaybeBranch bm ary = runST (goArray bm ary)
+
+  goArray ::
+    forall s.
+    Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map b))
+  goArray bm ary = do
+    let n = sizeofSmallArray ary
+    mary <- newSmallArray n empty
+    let step !w !i !j !newBm
+          | w == 0 =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  if j < n
+                    then shrinkSmallMutableArray mary j
+                    else pure ()
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (newBm, newAry)
+          | otherwise =
+              let bitPos = countTrailingZeros w
+                  bit = 1 `unsafeShiftL` bitPos
+                  child = indexSmallArray ary i
+                  child' = go child
+                  w' = w .&. (w - 1)
+               in if null child'
+                    then step w' (i + 1) j newBm
+                    else do
+                      writeSmallArray mary j child'
+                      step w' (i + 1) (j + 1) (newBm .|. bit)
+    step bm 0 0 0
 
 mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
 mapEither f = mapEitherWithKey (\_ x -> f x)

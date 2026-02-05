@@ -183,6 +183,7 @@ size (Leaf _ _) = 1
 size (Branch _ ary) = Foldable.foldl' (\acc child -> acc + size child) 0 ary
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
+insert k v (Branch (BM 0) _) = singleton k v
 insert k v m = insertAtShift 0 k v m
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a

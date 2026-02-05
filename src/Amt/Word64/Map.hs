@@ -450,6 +450,49 @@ mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 union :: Word64Map a -> Word64Map a -> Word64Map a
 union m1 m2 = unionAtShift 0# m1 m2
 
+mergeBranches ::
+  Word64 ->
+  SmallArray (Word64Map a) ->
+  Word64 ->
+  SmallArray (Word64Map a) ->
+  (Word64Map a -> Word64Map a -> Word64Map a) ->
+  (Word64, SmallArray (Word64Map a))
+mergeBranches bm1 ary1 bm2 ary2 both =
+  let newBm = bm1 .|. bm2
+      n = popCount newBm
+   in if n == 0
+        then (0, mempty)
+        else
+          ( newBm
+          , runST $ do
+              mary <- newSmallArray n empty
+              let step !w !i1 !i2 !j
+                    | w == 0 = unsafeFreezeSmallArray mary
+                    | otherwise =
+                        let bitPos = countTrailingZeros w
+                            bit = 1 `unsafeShiftL` bitPos
+                            has1 = bm1 .&. bit /= 0
+                            has2 = bm2 .&. bit /= 0
+                            (child, i1', i2') = case (has1, has2) of
+                              (True, True) ->
+                                ( both
+                                    (indexSmallArray ary1 i1)
+                                    (indexSmallArray ary2 i2)
+                                , i1 + 1
+                                , i2 + 1
+                                )
+                              (True, False) ->
+                                (indexSmallArray ary1 i1, i1 + 1, i2)
+                              (False, True) ->
+                                (indexSmallArray ary2 i2, i1, i2 + 1)
+                              (False, False) -> error "mergeBranches: impossible"
+                            w' = w .&. (w - 1)
+                         in do
+                              writeSmallArray mary j child
+                              step w' i1' i2' (j + 1)
+              step newBm 0 0 0
+          )
+
 unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShift !shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
@@ -457,22 +500,13 @@ unionAtShift !shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
-    let newBm = bm1 .|. bm2
-        bits = [b | b <- [0 .. 63], testBit newBm b]
-        newAryList = flip fmap bits $ \b ->
-          let bit = Bits.bit b
-              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
-              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
-           in case (mIndex1, mIndex2) of
-                (Just i1, Just i2) ->
-                  unionAtShift
-                    (nextShift shift)
-                    (indexSmallArray ary1 i1)
-                    (indexSmallArray ary2 i2)
-                (Just i1, Nothing) -> indexSmallArray ary1 i1
-                (Nothing, Just i2) -> indexSmallArray ary2 i2
-                (Nothing, Nothing) -> error "union: impossible"
-        newAry = smallArrayFromList newAryList
+    let (newBm, newAry) =
+          mergeBranches
+            bm1
+            ary1
+            bm2
+            ary2
+            (unionAtShift (nextShift shift))
      in collapse (BM newBm) newAry
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
@@ -490,23 +524,13 @@ unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
   (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
-    let newBm = bm1 .|. bm2
-        bits = [b | b <- [0 .. 63], testBit newBm b]
-        newAryList = flip fmap bits $ \b ->
-          let bit = Bits.bit b
-              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
-              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
-           in case (mIndex1, mIndex2) of
-                (Just i1, Just i2) ->
-                  unionWithKeyAtShift
-                    (nextShift shift)
-                    f
-                    (indexSmallArray ary1 i1)
-                    (indexSmallArray ary2 i2)
-                (Just i1, Nothing) -> indexSmallArray ary1 i1
-                (Nothing, Just i2) -> indexSmallArray ary2 i2
-                (Nothing, Nothing) -> error "unionWithKey: impossible"
-        newAry = smallArrayFromList newAryList
+    let (newBm, newAry) =
+          mergeBranches
+            bm1
+            ary1
+            bm2
+            ary2
+            (unionWithKeyAtShift (nextShift shift) f)
      in collapse (BM newBm) newAry
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a

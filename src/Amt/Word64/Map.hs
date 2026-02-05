@@ -685,25 +685,77 @@ partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partition f = partitionWithKey (\_ x -> f x)
 
 partitionWithKey ::
-  (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
+  forall a. (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partitionWithKey f m = go m
  where
   go (Leaf k v)
     | f k v = (Leaf k v, empty)
     | otherwise = (empty, Leaf k v)
+  go (Branch (BM 0) _) = (empty, empty)
   go (Branch (BM bm) ary) =
-    let results = fmap go (Foldable.toList ary)
-        bits = [b | b <- [0 .. 63], testBit bm b]
-        (lResults, rResults) = unzip results
-        lPairs = [(b, res) | (b, res) <- zip bits lResults, not (null res)]
-        rPairs = [(b, res) | (b, res) <- zip bits rResults, not (null res)]
-        lBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 lPairs
-        rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
-        lAry = smallArrayFromList [res | (_, res) <- lPairs]
-        rAry = smallArrayFromList [res | (_, res) <- rPairs]
+    let (lBm, lAry, rBm, rAry) = partitionBranch bm ary
         l = collapse (BM lBm) lAry
         r = collapse (BM rBm) rAry
      in (l, r)
+
+  partitionBranch ::
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    (Word64, SmallArray (Word64Map a), Word64, SmallArray (Word64Map a))
+  partitionBranch bm ary = runST (goArray bm ary)
+
+  goArray ::
+    forall s.
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    ST s (Word64, SmallArray (Word64Map a), Word64, SmallArray (Word64Map a))
+  goArray bm ary = do
+    let n = sizeofSmallArray ary
+    maryL <- newSmallArray n (empty :: Word64Map b)
+    maryR <- newSmallArray n (empty :: Word64Map c)
+    let finish ::
+          forall x.
+          SmallMutableArray s (Word64Map x) ->
+          Int ->
+          Word64 ->
+          ST s (Word64, SmallArray (Word64Map x))
+        finish mary j bmAcc =
+          if j == 0
+            then pure (0, mempty)
+            else do
+              if j < n
+                then shrinkSmallMutableArray mary j
+                else pure ()
+              newAry <- unsafeFreezeSmallArray mary
+              pure (bmAcc, newAry)
+        step !w !i !jl !jr !lBm !rBm
+          | w == 0 = do
+              (lBm', lAry) <- finish maryL jl lBm
+              (rBm', rAry) <- finish maryR jr rBm
+              pure (lBm', lAry, rBm', rAry)
+          | otherwise =
+              let bitPos = countTrailingZeros w
+                  bit = 1 `unsafeShiftL` bitPos
+                  child = indexSmallArray ary i
+                  (lChild, rChild) = go child
+                  w' = w .&. (w - 1)
+                  (jl', lBm') =
+                    if null lChild
+                      then (jl, lBm)
+                      else (jl + 1, lBm .|. bit)
+                  (jr', rBm') =
+                    if null rChild
+                      then (jr, rBm)
+                      else (jr + 1, rBm .|. bit)
+               in do
+                    if null lChild
+                      then pure ()
+                      else writeSmallArray maryL jl lChild
+                    if null rChild
+                      then pure ()
+                      else writeSmallArray maryR jr rChild
+                    step w' (i + 1) jl' jr' lBm' rBm'
+    step bm 0 0 0 0 0
 
 mapMaybe :: (a -> Maybe b) -> Word64Map a -> Word64Map b
 mapMaybe f = mapMaybeWithKey (\_ x -> f x)
@@ -757,25 +809,80 @@ mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
 mapEither f = mapEitherWithKey (\_ x -> f x)
 
 mapEitherWithKey ::
-  (Word64 -> a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
+  forall a b c.
+  (Word64 -> a -> Either b c) ->
+  Word64Map a ->
+  (Word64Map b, Word64Map c)
 mapEitherWithKey f m = go m
  where
   go (Leaf k v) = case f k v of
     Left b -> (Leaf k b, empty)
     Right c -> (empty, Leaf k c)
+  go (Branch (BM 0) _) = (empty, empty)
   go (Branch (BM bm) ary) =
-    let results = fmap go (Foldable.toList ary)
-        bits = [b | b <- [0 .. 63], testBit bm b]
-        (lResults, rResults) = unzip results
-        lPairs = [(b, res) | (b, res) <- zip bits lResults, not (null res)]
-        rPairs = [(b, res) | (b, res) <- zip bits rResults, not (null res)]
-        lBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 lPairs
-        rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
-        lAry = smallArrayFromList [res | (_, res) <- lPairs]
-        rAry = smallArrayFromList [res | (_, res) <- rPairs]
+    let (lBm, lAry, rBm, rAry) = mapEitherBranch bm ary
         l = collapse (BM lBm) lAry
         r = collapse (BM rBm) rAry
      in (l, r)
+
+  mapEitherBranch ::
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    (Word64, SmallArray (Word64Map b), Word64, SmallArray (Word64Map c))
+  mapEitherBranch bm ary = runST (goArray bm ary)
+
+  goArray ::
+    forall s.
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    ST s (Word64, SmallArray (Word64Map b), Word64, SmallArray (Word64Map c))
+  goArray bm ary = do
+    let n = sizeofSmallArray ary
+    maryL <- newSmallArray n (empty :: Word64Map b)
+    maryR <- newSmallArray n (empty :: Word64Map c)
+    let finish ::
+          forall x.
+          SmallMutableArray s (Word64Map x) ->
+          Int ->
+          Word64 ->
+          ST s (Word64, SmallArray (Word64Map x))
+        finish mary j bmAcc =
+          if j == 0
+            then pure (0, mempty)
+            else do
+              if j < n
+                then shrinkSmallMutableArray mary j
+                else pure ()
+              newAry <- unsafeFreezeSmallArray mary
+              pure (bmAcc, newAry)
+        step !w !i !jl !jr !lBm !rBm
+          | w == 0 = do
+              (lBm', lAry) <- finish maryL jl lBm
+              (rBm', rAry) <- finish maryR jr rBm
+              pure (lBm', lAry, rBm', rAry)
+          | otherwise =
+              let bitPos = countTrailingZeros w
+                  bit = 1 `unsafeShiftL` bitPos
+                  child = indexSmallArray ary i
+                  (lChild, rChild) = go child
+                  w' = w .&. (w - 1)
+                  (jl', lBm') =
+                    if null lChild
+                      then (jl, lBm)
+                      else (jl + 1, lBm .|. bit)
+                  (jr', rBm') =
+                    if null rChild
+                      then (jr, rBm)
+                      else (jr + 1, rBm .|. bit)
+               in do
+                    if null lChild
+                      then pure ()
+                      else writeSmallArray maryL jl lChild
+                    if null rChild
+                      then pure ()
+                      else writeSmallArray maryR jr rChild
+                    step w' (i + 1) jl' jr' lBm' rBm'
+    step bm 0 0 0 0 0
 
 isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
 isSubmapOf = isSubmapOfBy (==)

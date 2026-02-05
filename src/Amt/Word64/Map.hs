@@ -137,7 +137,7 @@ validInternal shift prefix (Branch (BM bm) ary) =
       s = size (Branch (BM bm) ary)
    in if popCount bm /= n
         then Just $ BitmapCountMismatch bm n
-        else validSubtrees 0 0 bm ary
+        else validSubtrees shift prefix bm ary
 
 validSubtrees shift prefix bm ary
   | sizeofSmallArray ary == 1

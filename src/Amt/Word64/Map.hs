@@ -134,13 +134,13 @@ valid (Branch (BM 0) ary)
 valid t = validInternal 0 0 t
 
 validInternal :: Shift -> Word64 -> Word64Map a -> Maybe InvariantViolation
-validInternal shift prefix (Leaf k _) =
+validInternal !shift !prefix (Leaf k _) =
   let mask = if shift >= 64 then complement 0 else (Bits.bit shift :: Word64) - 1
    in if (k .&. mask) == prefix
         then Nothing
         else Just $ PrefixMismatch k shift prefix
 validInternal _ _ (Branch (BM 0) _) = Just UnexpectedEmptyBranch
-validInternal shift prefix (Branch (BM bm) ary) =
+validInternal !shift !prefix (Branch (BM bm) ary) =
   let n = sizeofSmallArray ary
    in if popCount bm /= n
         then Just $ BitmapCountMismatch bm n
@@ -353,7 +353,7 @@ adjustWithKey f k m = go 0 m
   go _ (Leaf k' v)
     | k == k' = Leaf k (f k v)
     | otherwise = Leaf k' v
-  go shift (Branch (BM bm) ary) =
+  go !shift (Branch (BM bm) ary) =
     case index shift k (BM bm) of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index _ i Match ->
@@ -388,7 +388,7 @@ union :: Word64Map a -> Word64Map a -> Word64Map a
 union m1 m2 = unionAtShift 0 m1 m2
 
 unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
-unionAtShift shift m1 m2 = case (m1, m2) of
+unionAtShift !shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
@@ -417,7 +417,7 @@ unionWithKey f m1 m2 = unionWithKeyAtShift 0 f m1 m2
 
 unionWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
-unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
+unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
   (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
@@ -510,21 +510,21 @@ mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2
   go _ m1 (Branch (BM 0) _) = g1 m1
-  go shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> unionAtShift shift (g1 (Leaf k1 v1)) (g2 m2)
     Just v2 ->
       let rest = deleteAtShift shift k1 m2
        in case f k1 v1 v2 of
             Nothing -> g2 rest
             Just v' -> insertAtShift shift k1 v' (g2 rest)
-  go shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
+  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
     Nothing -> unionAtShift shift (g1 m1) (g2 (Leaf k2 v2))
     Just v1 ->
       let rest = deleteAtShift shift k2 m1
        in case f k2 v1 v2 of
             Nothing -> g1 rest
             Just v' -> insertAtShift shift k2 v' (g1 rest)
-  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let allBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit allBm b]
         pairs = flip fmap bits $ \b ->
@@ -550,17 +550,17 @@ differenceWith f m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
   go _ m1 (Branch (BM 0) _) = m1
-  go shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> Leaf k1 v1
     Just v2 -> case f v1 v2 of
       Nothing -> empty
       Just v1' -> Leaf k1 v1'
-  go shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
+  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
     Nothing -> m1
     Just v1 -> case f v1 v2 of
       Nothing -> deleteAtShift shift k2 m1
       Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
-  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
         pairs = flip fmap bits1 $ \b ->
           let bit = Bits.bit b
@@ -586,13 +586,13 @@ intersectionWithKey f m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
   go _ _ (Branch (BM 0) _) = empty
-  go shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> empty
     Just v2 -> Leaf k1 (f k1 v1 v2)
-  go shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
+  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
     Nothing -> empty
     Just v1 -> Leaf k2 (f k2 v1 v2)
-  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let commonBm = bm1 .&. bm2
         bits = [b | b <- [0 .. 63], testBit commonBm b]
         pairs = flip fmap bits $ \b ->
@@ -694,11 +694,11 @@ isSubmapOfBy f m1_ m2_ = go (0 :: Shift) m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = True
   go _ _ (Branch (BM 0) _) = False
-  go shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> False
     Just v2 -> f v1 v2
   go _ (Branch _ _) (Leaf _ _) = False
-  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
      in all
           ( \b ->

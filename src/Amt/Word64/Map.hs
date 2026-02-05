@@ -551,7 +551,11 @@ differenceWith f m1_ m2_ = go (0 :: Shift) m1_ m2_
     Just v2 -> case f v1 v2 of
       Nothing -> empty
       Just v1' -> Leaf k1 v1'
-  go shift m1 (Leaf k2 _) = deleteAtShift shift k2 m1
+  go shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
+    Nothing -> m1
+    Just v1 -> case f v1 v2 of
+      Nothing -> deleteAtShift shift k2 m1
+      Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
   go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
         pairs = flip fmap bits1 $ \b ->

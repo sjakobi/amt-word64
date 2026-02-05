@@ -133,21 +133,20 @@ valid (Branch (BM 0) ary)
   n = sizeofSmallArray ary
 valid t = validInternal 0 0 t
 
+validInternal :: Shift -> Word64 -> Word64Map a -> Maybe InvariantViolation
 validInternal shift prefix (Leaf k _) =
   let mask = if shift >= 64 then complement 0 else (Bits.bit shift :: Word64) - 1
    in if (k .&. mask) == prefix
         then Nothing
         else Just $ PrefixMismatch k shift prefix
-validInternal shift prefix (Branch (BM 0) ary) = Just UnexpectedEmptyBranch
+validInternal _ _ (Branch (BM 0) _) = Just UnexpectedEmptyBranch
 validInternal shift prefix (Branch (BM bm) ary) =
-  let children = Foldable.toList ary
-      bits = [i | i <- [0 .. 63], testBit bm i]
-      n = sizeofSmallArray ary
-      s = size (Branch (BM bm) ary)
+  let n = sizeofSmallArray ary
    in if popCount bm /= n
         then Just $ BitmapCountMismatch bm n
         else validSubtrees shift prefix bm ary
 
+validSubtrees :: Shift -> Word64 -> Word64 -> SmallArray (Word64Map a) -> Maybe InvariantViolation
 validSubtrees shift prefix bm ary
   | sizeofSmallArray ary == 1
   , Leaf{} <- indexSmallArray ary 0 =

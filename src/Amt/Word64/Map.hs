@@ -126,8 +126,10 @@ data Index = Index !Bitmap !Int !BitMatch
 -- | Does the Bitmap contain the Word64 at the given Shift?
 data BitMatch = NoMatch | Match
 
+-- | Unlifted shift counter in multiples of 6 bits.
 newtype Shift = Shift Int#
 
+-- | Boxed shift value for diagnostics and 'InvariantViolation' payloads.
 newtype ShiftBox = ShiftBox Int
   deriving (Eq, Show)
 
@@ -135,9 +137,9 @@ shiftToInt :: Shift -> Int
 shiftToInt (Shift s) = I# s
 {-# INLINE shiftToInt #-}
 
-shiftAdd6 :: Shift -> Shift
-shiftAdd6 (Shift s) = Shift (s +# 6#)
-{-# INLINE shiftAdd6 #-}
+nextShift :: Shift -> Shift
+nextShift (Shift s) = Shift (s +# 6#)
+{-# INLINE nextShift #-}
 
 shiftGE64 :: Shift -> Bool
 shiftGE64 (Shift s) = case s >=# 64# of
@@ -192,7 +194,7 @@ validSubtrees shift prefix bm ary
           zipWith
             ( \i child ->
                 validInternal
-                  (shiftAdd6 shift)
+                  (nextShift shift)
                   (prefix .|. (fromIntegral i `Bits.shiftL` shiftToInt shift :: Word64))
                   child
             )
@@ -235,7 +237,7 @@ lookupAtShift shift k = go shift
   go !s (Branch (BM bm) ary) =
     case index s k (BM bm) of
       Index _ _ NoMatch -> Nothing
-      Index _ i Match -> go (shiftAdd6 s) (indexSmallArray ary i)
+      Index _ i Match -> go (nextShift s) (indexSmallArray ary i)
 
 member :: Word64 -> Word64Map a -> Bool
 member k m = case lookup k m of
@@ -277,7 +279,7 @@ insert k v m = case m of
     case index (Shift 0#) k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (shiftAdd6 (Shift 0#)) k v child
+            newChild = insertAtShift (nextShift (Shift 0#)) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -296,7 +298,7 @@ insertWithKey f k v m = case m of
     case index (Shift 0#) k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (shiftAdd6 (Shift 0#)) f k v child
+            newChild = insertWithKeyAtShift (nextShift (Shift 0#)) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -312,7 +314,7 @@ insertWithKeyAtShift !s f k v m = case m of
     case index s k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (shiftAdd6 s) f k v child
+            newChild = insertWithKeyAtShift (nextShift s) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -327,7 +329,7 @@ insertAtShift !s k v m = case m of
     case index s k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (shiftAdd6 s) k v child
+            newChild = insertAtShift (nextShift s) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -345,7 +347,7 @@ two !shift k1 v1 k2 v2 =
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
            in Branch (BM bm) ary
         else
-          let child = two (shiftAdd6 shift) k1 v1 k2 v2
+          let child = two (nextShift shift) k1 v1 k2 v2
               bm = Bits.bit idx1
            in Branch (BM bm) (smallArrayFromList [child])
 
@@ -362,7 +364,7 @@ deleteAtShift !shift k m = go shift m
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index (BM bit) i Match ->
         let child = indexSmallArray ary i
-            newChild = go (shiftAdd6 s) child
+            newChild = go (nextShift s) child
          in if null newChild
               then
                 let newBm = bm .&. complement bit
@@ -386,7 +388,7 @@ adjustWithKey f k m = go (Shift 0#) m
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = go (shiftAdd6 shift) child
+            newChild = go (nextShift shift) child
          in Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
@@ -431,7 +433,7 @@ unionAtShift !shift m1 m2 = case (m1, m2) of
            in case (mIndex1, mIndex2) of
                 (Just i1, Just i2) ->
                   unionAtShift
-                    (shiftAdd6 shift)
+                    (nextShift shift)
                     (indexSmallArray ary1 i1)
                     (indexSmallArray ary2 i2)
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
@@ -464,7 +466,7 @@ unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
            in case (mIndex1, mIndex2) of
                 (Just i1, Just i2) ->
                   unionWithKeyAtShift
-                    (shiftAdd6 shift)
+                    (nextShift shift)
                     f
                     (indexSmallArray ary1 i1)
                     (indexSmallArray ary2 i2)
@@ -486,7 +488,7 @@ insertIfNotExistsAtShift !shift k v m = case m of
     case index shift k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertIfNotExistsAtShift (shiftAdd6 shift) k v child
+            newChild = insertIfNotExistsAtShift (nextShift shift) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -565,7 +567,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go (Shift 0#) m1_ m2_
               mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
            in case (mIndex1, mIndex2) of
                 (Just i1, Just i2) ->
-                  (b, go (shiftAdd6 shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
+                  (b, go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
                 (Just i1, Nothing) -> (b, g1 (indexSmallArray ary1 i1))
                 (Nothing, Just i2) -> (b, g2 (indexSmallArray ary2 i2))
                 (Nothing, Nothing) -> error "mergeWithKey: impossible"
@@ -602,7 +604,7 @@ differenceWith f m1_ m2_ = go (Shift 0#) m1_ m2_
            in case mIndex2 of
                 Nothing -> (b, indexSmallArray ary1 i1)
                 Just i2 ->
-                  (b, go (shiftAdd6 shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
+                  (b, go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
@@ -633,7 +635,7 @@ intersectionWithKey f m1_ m2_ = go (Shift 0#) m1_ m2_
           let bit = Bits.bit b
               i1 = popCount (bm1 .&. (bit - 1))
               i2 = popCount (bm2 .&. (bit - 1))
-              child = go (shiftAdd6 shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+              child = go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
            in (b, child)
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
@@ -741,6 +743,6 @@ isSubmapOfBy f m1_ m2_ = go (Shift 0#) m1_ m2_
                   mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
                in case mIndex2 of
                     Nothing -> False
-                    Just i2 -> go (shiftAdd6 shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
+                    Just i2 -> go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
           )
           bits1

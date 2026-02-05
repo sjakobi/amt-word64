@@ -710,7 +710,12 @@ mapMaybeWithKey f m = go m
         pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
         newAry = smallArrayFromList [r | (_, r) <- pairs]
-     in mkBranch (BM newBm) newAry
+     in case sizeofSmallArray newAry of
+          0 -> empty
+          1 -> case indexSmallArray newAry 0 of
+            l@Leaf{} -> l
+            _ -> Branch (BM newBm) newAry
+          _ -> Branch (BM newBm) newAry
 
 mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
 mapEither f = mapEitherWithKey (\_ x -> f x)

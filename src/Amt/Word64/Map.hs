@@ -450,14 +450,18 @@ mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 union :: Word64Map a -> Word64Map a -> Word64Map a
 union m1 m2 = unionAtShift 0# m1 m2
 
-mergeBranches ::
+{- | Merge two branch arrays by walking the union bitmap once.
+
+The @both@ function is used when a bit is present in both branches.
+-}
+unionBranches ::
   Word64 ->
   SmallArray (Word64Map a) ->
   Word64 ->
   SmallArray (Word64Map a) ->
   (Word64Map a -> Word64Map a -> Word64Map a) ->
   (Word64, SmallArray (Word64Map a))
-mergeBranches bm1 ary1 bm2 ary2 both =
+unionBranches bm1 ary1 bm2 ary2 both =
   let newBm = bm1 .|. bm2
       n = popCount newBm
    in if n == 0
@@ -501,7 +505,7 @@ unionAtShift !shift m1 m2 = case (m1, m2) of
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
     let (newBm, newAry) =
-          mergeBranches
+          unionBranches
             bm1
             ary1
             bm2
@@ -525,7 +529,7 @@ unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
   (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
     let (newBm, newAry) =
-          mergeBranches
+          unionBranches
             bm1
             ary1
             bm2

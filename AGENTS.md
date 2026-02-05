@@ -111,6 +111,22 @@ To optimize performance-critical functions like `insert`, it is helpful to exami
     find dist-newstyle -name "*.dump-simpl"
     ```
 
+### PR Review Retrieval
+
+When a task depends on PR review comments, the fastest path is:
+
+1.  **Ensure `gh` auth**: The CLI must be authenticated (`gh auth login` or `GH_TOKEN`).
+2.  **Fetch review comments**: `gh pr view` does not expose line-level review comments.
+    ```bash
+    gh api repos/<owner>/<repo>/pulls/<pr-number>/comments
+    ```
+3.  **Fetch review summaries**:
+    ```bash
+    gh pr view <pr-number> --comments --json reviews,comments,files
+    ```
+
+Note: `cabal.project.local` is expected to be untracked when enabling Core dumps.
+
 ### Useful Commands for Analysis
 
 - **Search for worker functions**: GHC often creates workers (e.g., `$winsert`) with unboxed arguments.

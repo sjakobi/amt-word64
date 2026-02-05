@@ -414,7 +414,13 @@ unionAtShift shift m1 m2 = case (m1, m2) of
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "union: impossible"
-     in mkBranch (BM newBm) (smallArrayFromList newAryList)
+        newAry = smallArrayFromList newAryList
+     in case sizeofSmallArray newAry of
+          0 -> empty
+          1 -> case indexSmallArray newAry 0 of
+            l@Leaf{} -> l
+            _ -> Branch (BM newBm) newAry
+          _ -> Branch (BM newBm) newAry
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith f = unionWithKey (\_ x y -> f x y)

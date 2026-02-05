@@ -338,8 +338,11 @@ deleteAtShift shift k m = go shift m
          in if null newChild
               then
                 let newBm = bm .&. complement bit
-                 in mkBranch (BM newBm) (removeAt i ary)
-              else mkBranch (BM bm) (updateAt i newChild ary)
+                    newAry = removeAt i ary
+                 in collapse (BM newBm) newAry
+              else
+                let newAry = updateAt i newChild ary
+                 in collapse (BM bm) newAry
 
 adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f = adjustWithKey (\_ x -> f x)
@@ -402,7 +405,8 @@ unionAtShift shift m1 m2 = case (m1, m2) of
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "union: impossible"
-     in mkBranch (BM newBm) (smallArrayFromList newAryList)
+        newAry = smallArrayFromList newAryList
+     in collapse (BM newBm) newAry
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith f = unionWithKey (\_ x y -> f x y)
@@ -435,7 +439,8 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
                 (Just i1, Nothing) -> indexSmallArray ary1 i1
                 (Nothing, Just i2) -> indexSmallArray ary2 i2
                 (Nothing, Nothing) -> error "unionWithKey: impossible"
-     in mkBranch (BM newBm) (smallArrayFromList newAryList)
+        newAry = smallArrayFromList newAryList
+     in collapse (BM newBm) newAry
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExists k v m = insertIfNotExistsAtShift 0 k v m
@@ -485,14 +490,13 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
 
--- FIXME: Can't use `size` here.
-mkBranch :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
-mkBranch (BM 0) _ = empty
-mkBranch (BM bm) ary
-  | popCount bm == 1 =
-      let child = indexSmallArray ary 0
-       in if size child == 1 then child else Branch (BM bm) ary
-  | otherwise = Branch (BM bm) ary
+collapse :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
+collapse bm ary = case sizeofSmallArray ary of
+  0 -> empty
+  1 -> case indexSmallArray ary 0 of
+    l@Leaf{} -> l
+    _ -> Branch bm ary
+  _ -> Branch bm ary
 
 -- FIXME: Buggy
 mergeWithKey ::
@@ -535,7 +539,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go (0 :: Shift) m1_ m2_
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
-     in mkBranch (BM newBm) newAry
+     in collapse (BM newBm) newAry
 
 difference :: Word64Map a -> Word64Map b -> Word64Map a
 difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2
@@ -568,7 +572,7 @@ differenceWith f m1_ m2_ = go (0 :: Shift) m1_ m2_
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
-     in mkBranch (BM newBm) newAry
+     in collapse (BM newBm) newAry
 
 intersection :: Word64Map a -> Word64Map b -> Word64Map a
 intersection m1 m2 = intersectionWith (\x _ -> x) m1 m2
@@ -600,7 +604,7 @@ intersectionWithKey f m1_ m2_ = go (0 :: Shift) m1_ m2_
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
-     in mkBranch (BM newBm) newAry
+     in collapse (BM newBm) newAry
 
 filter :: (a -> Bool) -> Word64Map a -> Word64Map a
 filter f = filterWithKey (\_ x -> f x)
@@ -615,7 +619,7 @@ filterWithKey f m = go m
         pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
         newAry = smallArrayFromList [r | (_, r) <- pairs]
-     in mkBranch (BM newBm) newAry
+     in collapse (BM newBm) newAry
 
 partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partition f = partitionWithKey (\_ x -> f x)
@@ -637,7 +641,9 @@ partitionWithKey f m = go m
         rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
         lAry = smallArrayFromList [res | (_, res) <- lPairs]
         rAry = smallArrayFromList [res | (_, res) <- rPairs]
-     in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
+        l = collapse (BM lBm) lAry
+        r = collapse (BM rBm) rAry
+     in (l, r)
 
 mapMaybe :: (a -> Maybe b) -> Word64Map a -> Word64Map b
 mapMaybe f = mapMaybeWithKey (\_ x -> f x)
@@ -654,7 +660,7 @@ mapMaybeWithKey f m = go m
         pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
         newAry = smallArrayFromList [r | (_, r) <- pairs]
-     in mkBranch (BM newBm) newAry
+     in collapse (BM newBm) newAry
 
 mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
 mapEither f = mapEitherWithKey (\_ x -> f x)
@@ -676,7 +682,9 @@ mapEitherWithKey f m = go m
         rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
         lAry = smallArrayFromList [res | (_, res) <- lPairs]
         rAry = smallArrayFromList [res | (_, res) <- rPairs]
-     in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
+        l = collapse (BM lBm) lAry
+        r = collapse (BM rBm) rAry
+     in (l, r)
 
 isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
 isSubmapOf = isSubmapOfBy (==)

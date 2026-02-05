@@ -509,15 +509,6 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
 
--- FIXME: Can't use `size` here.
-mkBranch :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
-mkBranch (BM 0) _ = empty
-mkBranch (BM bm) ary
-  | popCount bm == 1 =
-      let child = indexSmallArray ary 0
-       in if size child == 1 then child else Branch (BM bm) ary
-  | otherwise = Branch (BM bm) ary
-
 -- FIXME: Buggy
 mergeWithKey ::
   (Word64 -> a -> b -> Maybe c) ->

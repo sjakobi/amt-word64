@@ -58,7 +58,8 @@ import Data.Bits qualified as Bits
 import Data.Foldable qualified as Foldable
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
-import GHC.Exts (Int (I#), Int#, (+#), (>=#))
+import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
+import GHC.Word (Word64 (W64#))
 import Prelude hiding (filter, lookup, map, null)
 
 data InvariantViolation
@@ -226,16 +227,24 @@ size (Leaf _ _) = 1
 size (Branch _ ary) = Foldable.sum (fmap size ary)
 
 lookup :: Word64 -> Word64Map a -> Maybe a
-lookup = lookupAtShift (Shift 0#)
+lookup k m = case k of
+  W64# ww -> lookupAtShift# (Shift 0#) ww m
 
 lookupAtShift :: Shift -> Word64 -> Word64Map a -> Maybe a
-lookupAtShift shift k = go shift
+lookupAtShift shift k = case k of
+  W64# ww -> lookupAtShift# shift ww
+
+lookupAtShift# :: Shift -> Word64# -> Word64Map a -> Maybe a
+lookupAtShift# shift k = go shift
  where
-  go _ (Leaf k' v)
-    | k == k' = Just v
-    | otherwise = Nothing
+  go _ (Leaf k' v) =
+    case k' of
+      W64# k'# ->
+        case eqWord64# k k'# of
+          1# -> Just v
+          _ -> Nothing
   go !s (Branch (BM bm) ary) =
-    case index s k (BM bm) of
+    case index s (W64# k) (BM bm) of
       Index _ _ NoMatch -> Nothing
       Index _ i Match -> go (nextShift s) (indexSmallArray ary i)
 

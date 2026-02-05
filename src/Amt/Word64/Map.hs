@@ -124,8 +124,8 @@ newtype Bitmap = BM Word64
 {- | Bitmap query result: bit mask for the current slot, compact array index,
 and whether the bit is present.
 
-The index is the position in the compact 'SmallArray' for this slot.
-Construct with 'index' when the index is needed regardless of presence.
+The array index is the position in the compact 'SmallArray' for this slot.
+Construct with 'index' when the array index is needed regardless of presence.
 -}
 data Index = Index !Bitmap !Int !BitMatch
 
@@ -216,7 +216,7 @@ index shift k (BM bm) =
    in Index (BM bit) i match
 {-# INLINE index #-}
 
-{- | Like 'index', but only returns the index when the bit is present.
+{- | Like 'index', but only returns the array index when the bit is present.
 
 This avoids a 'popCount' when the lookup misses.
 -}

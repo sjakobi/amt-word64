@@ -44,6 +44,7 @@ maintainer:         simon.jakobi@gmail.com
 -- copyright:
 category:           Data
 build-type:         Simple
+tested-with:        GHC == 9.10.1, GHC == 9.12.1, GHC == 9.14.1
 
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files:    CHANGELOG.md

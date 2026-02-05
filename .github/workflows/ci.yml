@@ -7,20 +7,35 @@ on:
     branches: [master]
 
 jobs:
-  build:
+  generate-matrix:
+    name: "Generate test matrix from Cabal file"
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        ghc: ["9.10", "9.12", "9.14"]
-        cabal: ["latest"]
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Extract tested GHC versions
+        id: set-matrix
+        uses: Kleidukos/get-tested@v0.1.9.1
+        with:
+          cabal-file: amt-word64.cabal
+          ubuntu-version: "latest"
+          version: 0.1.9.1
+
+  build:
+    needs: generate-matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ matrix.ghc }}
-          cabal-version: ${{ matrix.cabal }}
+          cabal-version: "latest"
 
       - name: Cache
         uses: actions/cache@v4
@@ -38,7 +53,7 @@ jobs:
 
       - name: Build
         run: |
-          if [ "${{ matrix.ghc }}" == "9.14" ]; then
+          if [ "${{ matrix.ghc }}" == "9.14.1" ]; then
             cabal build --enable-tests --ghc-options="-Werror"
           else
             cabal build --enable-tests

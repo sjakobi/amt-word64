@@ -159,6 +159,22 @@ shiftToBox :: Shift -> ShiftBox
 shiftToBox s = ShiftBox (I# s)
 {-# INLINE shiftToBox #-}
 
+{- | Mask containing the lowest set bit.
+
+When the input is @0@, the result is @0@.
+-}
+lowBit :: Word64 -> Word64
+lowBit w = w .&. negate w
+{-# INLINE lowBit #-}
+
+{- | Clear the lowest set bit.
+
+When the input is @0@, the result is @0@.
+-}
+clearLowBit :: Word64 -> Word64
+clearLowBit w = w .&. (w - 1)
+{-# INLINE clearLowBit #-}
+
 valid :: Word64Map a -> Maybe InvariantViolation
 valid (Branch (BM 0) ary)
   | n == 0 = Nothing
@@ -473,8 +489,7 @@ unionBranches bm1 ary1 bm2 ary2 both =
               let step !w !i1 !i2 !j
                     | w == 0 = unsafeFreezeSmallArray mary
                     | otherwise =
-                        let bitPos = countTrailingZeros w
-                            bit = 1 `unsafeShiftL` bitPos
+                        let bit = lowBit w
                             has1 = bm1 .&. bit /= 0
                             has2 = bm2 .&. bit /= 0
                             (child, i1', i2') = case (has1, has2) of
@@ -489,8 +504,8 @@ unionBranches bm1 ary1 bm2 ary2 both =
                                 (indexSmallArray ary1 i1, i1 + 1, i2)
                               (False, True) ->
                                 (indexSmallArray ary2 i2, i1, i2 + 1)
-                              (False, False) -> error "mergeBranches: impossible"
-                            w' = w .&. (w - 1)
+                              (False, False) -> error "unionBranches: impossible"
+                            w' = clearLowBit w
                          in do
                               writeSmallArray mary j child
                               step w' i1' i2' (j + 1)
@@ -660,8 +675,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
             step !w !i1 !i2 !j !newBm
               | w == 0 = finish j newBm
               | otherwise =
-                  let bitPos = countTrailingZeros w
-                      bit = 1 `unsafeShiftL` bitPos
+                  let bit = lowBit w
                       has1 = bm1 .&. bit /= 0
                       has2 = bm2 .&. bit /= 0
                       (m1, i1') =
@@ -672,7 +686,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                         if has2
                           then (Just (indexSmallArray ary2 i2), i2 + 1)
                           else (Nothing, i2)
-                      w' = w .&. (w - 1)
+                      w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
                           let child = go (nextShift shift) c1 c2
@@ -722,17 +736,17 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
       Nothing -> deleteAtShift shift k2 m1
       Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let (newBm, newAry) = differenceBranch shift bm1 ary1 bm2 ary2
+    let (newBm, newAry) = differenceBranches shift bm1 ary1 bm2 ary2
      in collapse (BM newBm) newAry
 
-  differenceBranch ::
+  differenceBranches ::
     Shift ->
     Word64 ->
     SmallArray (Word64Map a) ->
     Word64 ->
     SmallArray (Word64Map b) ->
     (Word64, SmallArray (Word64Map a))
-  differenceBranch shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
+  differenceBranches shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
 
   goArray ::
     forall s.
@@ -761,8 +775,7 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
             step !w !i1 !i2 !j !newBm
               | w == 0 = finish j newBm
               | otherwise =
-                  let bitPos = countTrailingZeros w
-                      bit = 1 `unsafeShiftL` bitPos
+                  let bit = lowBit w
                       has1 = bm1 .&. bit /= 0
                       has2 = bm2 .&. bit /= 0
                       (m1, i1') =
@@ -773,7 +786,7 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
                         if has2
                           then (Just (indexSmallArray ary2 i2), i2 + 1)
                           else (Nothing, i2)
-                      w' = w .&. (w - 1)
+                      w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
                           let child = go (nextShift shift) c1 c2
@@ -851,8 +864,7 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
             step !w !i1 !i2 !j !newBm
               | w == 0 = finish j newBm
               | otherwise =
-                  let bitPos = countTrailingZeros w
-                      bit = 1 `unsafeShiftL` bitPos
+                  let bit = lowBit w
                       has1 = bm1 .&. bit /= 0
                       has2 = bm2 .&. bit /= 0
                       (m1, i1') =
@@ -863,7 +875,7 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
                         if has2
                           then (Just (indexSmallArray ary2 i2), i2 + 1)
                           else (Nothing, i2)
-                      w' = w .&. (w - 1)
+                      w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
                           let child = go (nextShift shift) c1 c2
@@ -934,11 +946,10 @@ partitionWithKey f m = go m
               (rBm', rAry) <- finish maryR jr rBm
               pure (lBm', lAry, rBm', rAry)
           | otherwise =
-              let bitPos = countTrailingZeros w
-                  bit = 1 `unsafeShiftL` bitPos
+              let bit = lowBit w
                   child = indexSmallArray ary i
                   (lChild, rChild) = go child
-                  w' = w .&. (w - 1)
+                  w' = clearLowBit w
                   (jl', lBm') =
                     if null lChild
                       then (jl, lBm)
@@ -993,11 +1004,10 @@ mapMaybeWithKey f m = go m
                   newAry <- unsafeFreezeSmallArray mary
                   pure (newBm, newAry)
           | otherwise =
-              let bitPos = countTrailingZeros w
-                  bit = 1 `unsafeShiftL` bitPos
+              let bit = lowBit w
                   child = indexSmallArray ary i
                   child' = go child
-                  w' = w .&. (w - 1)
+                  w' = clearLowBit w
                in if null child'
                     then step w' (i + 1) j newBm
                     else do
@@ -1061,11 +1071,10 @@ mapEitherWithKey f m = go m
               (rBm', rAry) <- finish maryR jr rBm
               pure (lBm', lAry, rBm', rAry)
           | otherwise =
-              let bitPos = countTrailingZeros w
-                  bit = 1 `unsafeShiftL` bitPos
+              let bit = lowBit w
                   child = indexSmallArray ary i
                   (lChild, rChild) = go child
-                  w' = w .&. (w - 1)
+                  w' = clearLowBit w
                   (jl', lBm') =
                     if null lChild
                       then (jl, lBm)
@@ -1116,11 +1125,10 @@ isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
     step !w !i1 !i2
       | w == 0 = True
       | otherwise =
-          let bitPos = countTrailingZeros w
-              bit = 1 `unsafeShiftL` bitPos
+          let bit = lowBit w
               has1 = bm1 .&. bit /= 0
               has2 = bm2 .&. bit /= 0
-              w' = w .&. (w - 1)
+              w' = clearLowBit w
            in case (has1, has2) of
                 (True, True) ->
                   let c1 = indexSmallArray ary1 i1

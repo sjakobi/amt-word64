@@ -63,15 +63,19 @@ jobs:
           ghc: ${{ matrix.ghc }}
           cabal: ${{ matrix.cabal }}
 
+      - name: Cache key
+        id: cache_key
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
       - name: Cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cabal/packages
             ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-${{ matrix.ghc }}-cabal-${{ hashFiles('**/*.cabal') }}
+          key: ${{ runner.os }}-${{ matrix.ghc }}-cabal-${{ steps.cache_key.outputs.month }}-${{ hashFiles('**/*.cabal') }}
           restore-keys: |
+            ${{ runner.os }}-${{ matrix.ghc }}-cabal-${{ steps.cache_key.outputs.month }}-
             ${{ runner.os }}-${{ matrix.ghc }}-cabal-
 
       - name: Update hackage index

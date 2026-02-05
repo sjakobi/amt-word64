@@ -41,6 +41,7 @@ Use standard `cabal` commands for development:
    fourmolu --mode inplace src test
    ```
 3. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
+4. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations.
 
 ## Key Development Patterns
 

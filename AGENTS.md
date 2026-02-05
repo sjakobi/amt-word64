@@ -90,3 +90,38 @@ Always run `valid` on any generated or modified map in tests to ensure all invar
 
 - **`Leaf` handling in `differenceWith`**: Ensure the function `f` is applied when keys match, even if the second map is a `Leaf`.
 - **Recursion**: Always ensure `Shift` is incremented by 6 when descending into subtrees to avoid infinite loops.
+
+## Simplifier Output (Core) Analysis
+
+To optimize performance-critical functions like `insert`, it is helpful to examine GHC's simplifier output (Core).
+
+### Generating Core Dumps
+
+1.  **Configure Cabal**: Use the `cabal.project.local.dump-code` file to enable dumps.
+    ```bash
+    cp cabal.project.local.dump-code cabal.project.local
+    ```
+2.  **Build**: Run `cabal build` to generate the dumps.
+    ```bash
+    cabal build
+    ```
+3.  **Locate Dumps**: Core dumps (ending in `.dump-simpl`) are placed in the build directory.
+    ```bash
+    find dist-newstyle -name "*.dump-simpl"
+    ```
+
+### Useful Commands for Analysis
+
+- **Search for worker functions**: GHC often creates workers (e.g., `$winsert`) with unboxed arguments.
+  ```bash
+  grep -n "^\$winsert" path/to/Map.dump-simpl
+  ```
+- **Inspect strictness and unboxing**: Look at the `Str=` and `Arity=` signatures in the dump.
+- **Read specific sections**: Use `sed` to extract lines around a match.
+  ```bash
+  sed -n '5000,5100p' path/to/Map.dump-simpl
+  ```
+
+### Performance Tips
+- **Boxing**: Check if arguments like `Shift` (Int) are being re-boxed in recursive calls (e.g., `(I# (+# i# 6#))`). Use bang patterns `!s` to encourage unboxing.
+- **Inlining**: Ensure small helper functions are marked `INLINE` or `INLINABLE`.

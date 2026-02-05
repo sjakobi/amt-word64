@@ -737,7 +737,19 @@ mapEitherWithKey f m = go m
         rBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 rPairs
         lAry = smallArrayFromList [res | (_, res) <- lPairs]
         rAry = smallArrayFromList [res | (_, res) <- rPairs]
-     in (mkBranch (BM lBm) lAry, mkBranch (BM rBm) rAry)
+        l = case sizeofSmallArray lAry of
+          0 -> empty
+          1 -> case indexSmallArray lAry 0 of
+            leaf@Leaf{} -> leaf
+            _ -> Branch (BM lBm) lAry
+          _ -> Branch (BM lBm) lAry
+        r = case sizeofSmallArray rAry of
+          0 -> empty
+          1 -> case indexSmallArray rAry 0 of
+            leaf@Leaf{} -> leaf
+            _ -> Branch (BM rBm) rAry
+          _ -> Branch (BM rBm) rAry
+     in (l, r)
 
 isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
 isSubmapOf = isSubmapOfBy (==)

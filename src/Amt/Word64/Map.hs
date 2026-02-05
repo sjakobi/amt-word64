@@ -173,7 +173,8 @@ validSubtrees shift prefix bm ary
 
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =
-  let bit = Bits.bit (fromIntegral ((k `Bits.shiftR` shift) .&. 0x3f))
+  let ix = fromIntegral ((k `unsafeShiftR` shift) .&. 0x3f)
+      bit = 1 `unsafeShiftL` ix
       i = popCount (bm .&. (bit - 1))
       match = if bm .&. bit == 0 then NoMatch else Match
    in Index (BM bit) i match

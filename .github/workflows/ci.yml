@@ -37,7 +37,12 @@ jobs:
         run: cabal build --only-dependencies --enable-tests
 
       - name: Build
-        run: cabal build --enable-tests
+        run: |
+          if [ "${{ matrix.ghc }}" == "9.14" ]; then
+            cabal build --enable-tests --ghc-options="-Werror"
+          else
+            cabal build --enable-tests
+          fi
 
       - name: Test
         run: cabal test --enable-tests

@@ -36,6 +36,7 @@ import Amt.Word64.Map
   , mapMaybeWithKey
   , mapWithKey
   , member
+  , mergeWithKey
   , notMember
   , null
   , partition
@@ -203,6 +204,11 @@ tests =
         "alter"
         [ testProperty "matches Data.Map" prop_alter_model
         , testProperty "valid invariant" prop_alter_valid
+        ]
+    , testGroup
+        "mergeWithKey"
+        [ testProperty "matches Data.Map" prop_mergeWithKey_model
+        , testProperty "valid invariant" prop_mergeWithKey_valid
         ]
     , testGroup
         "map"
@@ -888,3 +894,30 @@ prop_isSubmapOfBy_model e1 e2 =
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in isSubmapOfBy f m1 m2 === Map.isSubmapOfBy f ref1 ref2
+
+prop_mergeWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_model e1 e2 =
+  let f k x y = if even (toWord64 k + fromIntegral (x + y)) then Just (x + y) else Nothing
+      f_g1 k x = if even k then Just (x + 1) else Nothing
+      f_g2 k x = if odd k then Just (x * 2) else Nothing
+      g1 = mapMaybeWithKey f_g1
+      g2 = mapMaybeWithKey f_g2
+      refG1 = Map.mapMaybeWithKey (\k x -> f_g1 (toWord64 k) x)
+      refG2 = Map.mapMaybeWithKey (\k x -> f_g2 (toWord64 k) x)
+      m1 = fromKList e1
+      m2 = fromKList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in toSortedList (mergeWithKey (\k x y -> f (fromWord64 k) x y) g1 g2 m1 m2)
+        === Map.toList (Map.mergeWithKey f refG1 refG2 ref1 ref2)
+
+prop_mergeWithKey_valid :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_valid e1 e2 =
+  let f k x y = if even (toWord64 k + fromIntegral (x + y)) then Just (x + y) else Nothing
+      f_g1 k x = if even k then Just (x + 1) else Nothing
+      f_g2 k x = if odd k then Just (x * 2) else Nothing
+      g1 = mapMaybeWithKey f_g1
+      g2 = mapMaybeWithKey f_g2
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in checkValid (mergeWithKey (\k x y -> f (fromWord64 k) x y) g1 g2 m1 m2)

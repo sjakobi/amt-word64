@@ -23,6 +23,25 @@ This document provides essential context and guidelines for agents working on th
 3. **Bitmap consistency**: `popCount bm` must always equal `sizeofSmallArray ary`.
 4. **Prefix consistency**: All keys in a subtree must share the same prefix bits above the current `Shift`.
 
+## Development and Operations
+
+### Building and Testing
+
+Use standard `cabal` commands for development:
+
+- **Build**: `cabal build` (use `--enable-tests` to include test targets).
+- **Test**: `cabal test` or `cabal run amt-word64-test`.
+- **Clean**: `cabal clean`.
+
+### Development Workflow
+
+1. **Feature Branches**: Never commit directly to `master`. Always work in a feature branch and prepare a PR.
+2. **Formatting**: All Haskell code must be formatted using `fourmolu`. Run the following before committing:
+   ```bash
+   fourmolu --mode inplace src test
+   ```
+3. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
+
 ## Key Development Patterns
 
 ### Collapsing Logic

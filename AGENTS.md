@@ -36,12 +36,13 @@ Use standard `cabal` commands for development:
 ### Development Workflow
 
 1. **Feature Branches**: Never commit directly to `master`. Always work in a feature branch and prepare a PR. All changes shall be committed with an explanation and mention of the current model. Do not ask for permission before creating commits on feature branches.
-2. **Formatting**: All Haskell code must be formatted using `fourmolu`. Run this after each change and before committing:
+2. **Git Operations**: You have standing permission to create commits on feature branches, switch branches, and use non-destructive git commands (e.g., `status`, `log`, `diff`, `add`, `stash`, `switch`). Do not use destructive commands like `reset --hard` unless explicitly asked.
+3. **Formatting**: All Haskell code must be formatted using `fourmolu`. Run this after each change and before committing:
    ```bash
    fourmolu --mode inplace src test
    ```
-3. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
-4. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations. This permission is explicitly confirmed and should be treated as durable for this repo.
+4. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
+5. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations. This permission is explicitly confirmed and should be treated as durable for this repo.
 
 ## Key Development Patterns
 

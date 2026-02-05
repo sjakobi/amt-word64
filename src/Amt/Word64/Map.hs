@@ -338,8 +338,20 @@ deleteAtShift shift k m = go shift m
          in if null newChild
               then
                 let newBm = bm .&. complement bit
-                 in mkBranch (BM newBm) (removeAt i ary)
-              else mkBranch (BM bm) (updateAt i newChild ary)
+                    newAry = removeAt i ary
+                 in case sizeofSmallArray newAry of
+                      0 -> empty
+                      1 -> case indexSmallArray newAry 0 of
+                        l@Leaf{} -> l
+                        _ -> Branch (BM newBm) newAry
+                      _ -> Branch (BM newBm) newAry
+              else
+                let newAry = updateAt i newChild ary
+                 in if sizeofSmallArray newAry == 1
+                      then case newChild of
+                        l@Leaf{} -> l
+                        _ -> Branch (BM bm) newAry
+                      else Branch (BM bm) newAry
 
 adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f = adjustWithKey (\_ x -> f x)

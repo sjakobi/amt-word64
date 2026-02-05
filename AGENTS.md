@@ -18,10 +18,10 @@ This document provides essential context and guidelines for agents working on th
 
 ### Invariants
 
-1. **Canonical empty**: The empty map is always `Branch (BM 0) mempty`. Use the `null` function to check for emptiness.
-2. **No redundant branches**: A `Branch` should never have exactly one child if that child is a `Leaf`. Such branches must be collapsed. Internal branches with one child are allowed if they eventually lead to multiple leaves or a different prefix structure.
+1. **Canonical empty**: The empty map is represented by a 'Branch' with an empty bitmap. Use the `null` function to check for emptiness.
+2. **No redundant branches**: A 'Branch' must never have exactly one sub-node if that node is a 'Leaf'. Such branches must be collapsed. Branches with a single 'Branch' sub-node are allowed.
 3. **Bitmap consistency**: `popCount bm` must always equal `sizeofSmallArray ary`.
-4. **Prefix consistency**: All keys in a subtree must share the same prefix bits above the current `Shift`.
+4. **Prefix consistency**: All keys in a subtree must share the same prefix for the bits more significant than the current shift.
 
 ## Development and Operations
 

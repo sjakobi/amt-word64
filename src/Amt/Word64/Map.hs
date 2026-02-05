@@ -80,9 +80,8 @@ data InvariantViolation
 1. __Canonical empty__: The empty map is represented by a 'Branch' with an
    empty bitmap.
 
-2. __No redundant branches__: A 'Branch' must have either exactly zero
-   children (only if it is the root) or at least two children. If a branch
-   would have only one child, that child must be collapsed upwards.
+2. __No redundant branches__: If a 'Branch' has exactly one sub-node, this
+   node must be a 'Branch' node too.
 
 3. __Bitmap consistency__: The number of set bits in the 'Bitmap' must
    exactly match the size of the 'SmallArray'.

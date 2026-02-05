@@ -591,6 +591,7 @@ collapse bm ary = case sizeofSmallArray ary of
 
 -- FIXME: Buggy
 mergeWithKey ::
+  forall a b c.
   (Word64 -> a -> b -> Maybe c) ->
   (Word64Map a -> Word64Map c) ->
   (Word64Map b -> Word64Map c) ->
@@ -616,22 +617,82 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
             Nothing -> g1 rest
             Just v' -> insertAtShift shift k2 v' (g1 rest)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let allBm = bm1 .|. bm2
-        bits = [b | b <- [0 .. 63], testBit allBm b]
-        pairs = flip fmap bits $ \b ->
-          let bit = Bits.bit b
-              mIndex1 = if bm1 .&. bit /= 0 then Just (popCount (bm1 .&. (bit - 1))) else Nothing
-              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
-           in case (mIndex1, mIndex2) of
-                (Just i1, Just i2) ->
-                  (b, go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
-                (Just i1, Nothing) -> (b, g1 (indexSmallArray ary1 i1))
-                (Nothing, Just i2) -> (b, g2 (indexSmallArray ary2 i2))
-                (Nothing, Nothing) -> error "mergeWithKey: impossible"
-        validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
-        newAry = smallArrayFromList [r | (_, r) <- validPairs]
+    let (newBm, newAry) = mergeBranch shift bm1 ary1 bm2 ary2
      in collapse (BM newBm) newAry
+
+  mergeBranch ::
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    (Word64, SmallArray (Word64Map c))
+  mergeBranch shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
+
+  goArray ::
+    forall s.
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    ST s (Word64, SmallArray (Word64Map c))
+  goArray shift bm1 ary1 bm2 ary2 = do
+    let unionBm = bm1 .|. bm2
+        n = popCount unionBm
+    if n == 0
+      then pure (0, mempty)
+      else do
+        mary <- newSmallArray n empty
+        let finish j bmAcc =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  if j < n
+                    then shrinkSmallMutableArray mary j
+                    else pure ()
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (bmAcc, newAry)
+            step !w !i1 !i2 !j !newBm
+              | w == 0 = finish j newBm
+              | otherwise =
+                  let bitPos = countTrailingZeros w
+                      bit = 1 `unsafeShiftL` bitPos
+                      has1 = bm1 .&. bit /= 0
+                      has2 = bm2 .&. bit /= 0
+                      (m1, i1') =
+                        if has1
+                          then (Just (indexSmallArray ary1 i1), i1 + 1)
+                          else (Nothing, i1)
+                      (m2, i2') =
+                        if has2
+                          then (Just (indexSmallArray ary2 i2), i2 + 1)
+                          else (Nothing, i2)
+                      w' = w .&. (w - 1)
+                   in case (m1, m2) of
+                        (Just c1, Just c2) ->
+                          let child = go (nextShift shift) c1 c2
+                           in if null child
+                                then step w' i1' i2' j newBm
+                                else do
+                                  writeSmallArray mary j child
+                                  step w' i1' i2' (j + 1) (newBm .|. bit)
+                        (Just c1, Nothing) ->
+                          let child = g1 c1
+                           in if null child
+                                then step w' i1' i2' j newBm
+                                else do
+                                  writeSmallArray mary j child
+                                  step w' i1' i2' (j + 1) (newBm .|. bit)
+                        (Nothing, Just c2) ->
+                          let child = g2 c2
+                           in if null child
+                                then step w' i1' i2' j newBm
+                                else do
+                                  writeSmallArray mary j child
+                                  step w' i1' i2' (j + 1) (newBm .|. bit)
+                        (Nothing, Nothing) -> error "mergeWithKey: impossible"
+        step unionBm 0 0 0 0
 
 difference :: Word64Map a -> Word64Map b -> Word64Map a
 difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2

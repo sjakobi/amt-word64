@@ -890,8 +890,46 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
 filter :: (a -> Bool) -> Word64Map a -> Word64Map a
 filter f = filterWithKey (\_ x -> f x)
 
-filterWithKey :: (Word64 -> a -> Bool) -> Word64Map a -> Word64Map a
-filterWithKey f = mapMaybeWithKey (\k v -> if f k v then Just v else Nothing)
+filterWithKey :: forall a. (Word64 -> a -> Bool) -> Word64Map a -> Word64Map a
+filterWithKey f = go
+ where
+  go (Leaf k v) = if f k v then Leaf k v else empty
+  go (Branch (BM bm) ary)
+    | bm == 0 = empty
+    | otherwise =
+        let (newBm, newAry) = filterBranch bm ary
+         in collapse (BM newBm) newAry
+
+  filterBranch ::
+    Word64 -> SmallArray (Word64Map a) -> (Word64, SmallArray (Word64Map a))
+  filterBranch bm ary = runST (goArray bm ary)
+
+  goArray ::
+    forall s.
+    Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map a))
+  goArray bm ary = do
+    let n = sizeofSmallArray ary
+    mary <- newSmallArray n (empty :: Word64Map a)
+    let step !w !i !j !newBm
+          | w == 0 =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  if j < n
+                    then shrinkSmallMutableArray mary j
+                    else pure ()
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (newBm, newAry)
+          | otherwise =
+              let bit = lowBit w
+                  child = go (indexSmallArray ary i)
+                  w' = clearLowBit w
+               in if null child
+                    then step w' (i + 1) j newBm
+                    else do
+                      writeSmallArray mary j child
+                      step w' (i + 1) (j + 1) (newBm .|. bit)
+    step bm 0 0 0
 
 partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partition f = partitionWithKey (\_ x -> f x)

@@ -35,7 +35,7 @@ Use standard `cabal` commands for development:
 
 ### Development Workflow
 
-1. **Feature Branches**: Never commit directly to `master`. Always work in a feature branch and prepare a PR. All changes shall be committed with an explanation and mention of the current model. Do not ask for permission before creating commits on feature branches.
+1. **Feature Branches**: Never commit directly to `master`. Always work in a feature branch and prepare a PR. All changes shall be committed with an explanation and mention of the current model. For performance work, include evidence in the commit message (e.g., before/after snippets of generated code such as Core). Do not ask for permission before creating commits on feature branches.
 2. **Git Operations**: You have standing permission to create commits on feature branches, switch branches, and use non-destructive git commands (e.g., `status`, `log`, `diff`, `add`, `stash`, `switch`). Do not use destructive commands like `reset --hard` unless explicitly asked.
 3. **Formatting**: All Haskell code must be formatted using `fourmolu`. Run this after each change and before committing:
    ```bash

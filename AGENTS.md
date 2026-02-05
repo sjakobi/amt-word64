@@ -30,7 +30,7 @@ This document provides essential context and guidelines for agents working on th
 Use standard `cabal` commands for development:
 
 - **Build**: `cabal build` (use `--enable-tests` to include test targets).
-- **Test**: `cabal test` or `cabal run amt-word64-test`.
+- **Test**: `cabal run tests -- --hide-successes`.
 - **Clean**: `cabal clean`.
 
 ### Development Workflow
@@ -43,7 +43,7 @@ Use standard `cabal` commands for development:
    ```
 4. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
 5. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations. This permission is explicitly confirmed and should be treated as durable for this repo.
-6. **Command Permissions**: Do not ask before creating commits on feature branches. You have standing permission to run non-destructive git commands (`status`, `log`, `diff`, `add`, `stash`, `switch`, `fetch`, `push`, `rebase`, `worktree add/remove`). You may also run standard build/test commands (`cabal build`, `cabal test`, `cabal run`, `cabal clean`) and formatting (`fourmolu --mode inplace src test`) without asking. For network calls, `gh` is permitted for PR creation and review fetching, provided it does not perform destructive operations. Ask before running destructive commands like `reset --hard`, `checkout --`, or rewriting remote history unless explicitly requested.
+6. **Command Permissions**: Do not ask before creating commits on feature branches. You have standing permission to run non-destructive git commands (`status`, `log`, `diff`, `add`, `stash`, `switch`, `fetch`, `push`, `rebase`, `worktree add/remove`). You may also run standard build/test commands (`cabal build`, `cabal run tests -- --hide-successes`, `cabal run`, `cabal clean`) and formatting (`fourmolu --mode inplace src test`) without asking. For network calls, `gh` is permitted for PR creation and review fetching, provided it does not perform destructive operations. Ask before running destructive commands like `reset --hard`, `checkout --`, or rewriting remote history unless explicitly requested.
 7. **Commit Message Format**: Keep lines under 72 characters. Use a short subject line, then include a `Model:` line. Add an `Explanation:` paragraph when the change is non-trivial or benefits from context; use judgement for small changes. Example:
    ```
    Subject line

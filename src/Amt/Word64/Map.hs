@@ -211,9 +211,10 @@ validSubtrees shift prefix bm ary
 
 Use this when the array index is needed regardless of presence.
 -}
-index :: Shift -> Word64 -> Bitmap -> Index
-index shift k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
+index :: Shift -> Word64# -> Bitmap -> Index
+index shift k# (BM bm) =
+  let k = W64# k#
+      ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
       bit = 1 `unsafeShiftL` ix
       i = popCount (bm .&. (bit - 1))
       match = if bm .&. bit == 0 then NoMatch else Match
@@ -224,9 +225,10 @@ index shift k (BM bm) =
 
 This avoids a 'popCount' when the lookup misses.
 -}
-indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
-indexMatch shift k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
+indexMatch :: Shift -> Word64# -> Bitmap -> Maybe Int
+indexMatch shift k# (BM bm) =
+  let k = W64# k#
+      ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
       bit = 1 `unsafeShiftL` ix
    in if bm .&. bit == 0
         then Nothing
@@ -252,21 +254,17 @@ lookup :: Word64 -> Word64Map a -> Maybe a
 lookup k m = case k of
   W64# ww -> lookupAtShift# 0# ww m
 
-lookupAtShift :: Shift -> Word64 -> Word64Map a -> Maybe a
-lookupAtShift shift k = case k of
-  W64# ww -> lookupAtShift# shift ww
-
 lookupAtShift# :: Shift -> Word64# -> Word64Map a -> Maybe a
-lookupAtShift# shift k = go shift
+lookupAtShift# shift k# = go shift
  where
   go _ (Leaf k' v) =
     case k' of
       W64# k'# ->
-        case eqWord64# k k'# of
+        case eqWord64# k# k'# of
           1# -> Just v
           _ -> Nothing
   go !s (Branch (BM bm) ary) =
-    case indexMatch s (W64# k) (BM bm) of
+    case indexMatch s k# (BM bm) of
       Nothing -> Nothing
       Just i -> go (nextShift s) (indexSmallArray ary i)
 
@@ -301,73 +299,100 @@ foldlWithKey' f z (Leaf k v) = f z k v
 foldlWithKey' f z (Branch _ ary) = Foldable.foldl' (\acc m -> foldlWithKey' f acc m) z ary
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
-insert k v m = case m of
-  Branch (BM 0) _ -> singleton k v
-  Leaf k' v'
-    | k == k' -> Leaf k v
-    | otherwise -> two 0# k v k' v'
+insert k v m = case k of
+  W64# k# -> insert# k# v m
+
+insert# :: Word64# -> a -> Word64Map a -> Word64Map a
+insert# k# v m = case m of
+  Branch (BM 0) _ -> Leaf (W64# k#) v
+  Leaf k' v' ->
+    case k' of
+      W64# k'# ->
+        case eqWord64# k# k'# of
+          1# -> Leaf (W64# k#) v
+          _ -> two 0# k# v k'# v'
   Branch (BM bm) ary ->
-    case index 0# k (BM bm) of
+    case index 0# k# (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift 0#) k v child
+            newChild = insertAtShift (nextShift 0#) k# v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf (W64# k#) v) ary)
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
 
 insertWithKey ::
   (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWithKey f k v m = case m of
-  Branch (BM 0) _ -> singleton k v
-  Leaf k' v'
-    | k == k' -> Leaf k (f k v v')
-    | otherwise -> two 0# k v k' v'
-  Branch (BM bm) ary ->
-    case index 0# k (BM bm) of
-      Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift 0#) f k v child
-         in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+insertWithKey f k v m = case k of
+  W64# k# -> insertWithKey# f k# v m
+
+insertWithKey# ::
+  (Word64 -> a -> a -> a) -> Word64# -> a -> Word64Map a -> Word64Map a
+insertWithKey# f k# v m =
+  let k = W64# k#
+   in case m of
+        Branch (BM 0) _ -> Leaf k v
+        Leaf k' v' ->
+          case k' of
+            W64# k'# ->
+              case eqWord64# k# k'# of
+                1# -> Leaf k (f k v v')
+                _ -> two 0# k# v k'# v'
+        Branch (BM bm) ary ->
+          case index 0# k# (BM bm) of
+            Index _ i Match ->
+              let child = indexSmallArray ary i
+                  newChild = insertWithKeyAtShift (nextShift 0#) f k# v child
+               in Branch (BM bm) (updateAt i newChild ary)
+            Index (BM bit) i NoMatch ->
+              Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Only valid for internal nodes.
 insertWithKeyAtShift ::
-  Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWithKeyAtShift !s f k v m = case m of
-  Leaf k' v'
-    | k == k' -> Leaf k (f k v v')
-    | otherwise -> two s k v k' v'
-  Branch (BM bm) ary ->
-    case index s k (BM bm) of
-      Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift s) f k v child
-         in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+  Shift -> (Word64 -> a -> a -> a) -> Word64# -> a -> Word64Map a -> Word64Map a
+insertWithKeyAtShift !s f k# v m =
+  let k = W64# k#
+   in case m of
+        Leaf k' v' ->
+          case k' of
+            W64# k'# ->
+              case eqWord64# k# k'# of
+                1# -> Leaf k (f k v v')
+                _ -> two s k# v k'# v'
+        Branch (BM bm) ary ->
+          case index s k# (BM bm) of
+            Index _ i Match ->
+              let child = indexSmallArray ary i
+                  newChild = insertWithKeyAtShift (nextShift s) f k# v child
+               in Branch (BM bm) (updateAt i newChild ary)
+            Index (BM bit) i NoMatch ->
+              Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Only valid for internal nodes.
-insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertAtShift !s k v m = case m of
-  Leaf k' v'
-    | k == k' -> Leaf k v
-    | otherwise -> two s k v k' v'
+insertAtShift :: Shift -> Word64# -> a -> Word64Map a -> Word64Map a
+insertAtShift !s k# v m = case m of
+  Leaf k' v' ->
+    case k' of
+      W64# k'# ->
+        case eqWord64# k# k'# of
+          1# -> Leaf (W64# k#) v
+          _ -> two s k# v k'# v'
   Branch (BM bm) ary ->
-    case index s k (BM bm) of
+    case index s k# (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift s) k v child
+            newChild = insertAtShift (nextShift s) k# v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf (W64# k#) v) ary)
 
-two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
-two !shift k1 v1 k2 v2 =
-  let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
+two :: Shift -> Word64# -> a -> Word64# -> a -> Word64Map a
+two !shift k1# v1 k2# v2 =
+  let k1 = W64# k1#
+      k2 = W64# k2#
+      idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
       idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
    in if idx1 /= idx2
         then
@@ -378,20 +403,25 @@ two !shift k1 v1 k2 v2 =
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
            in Branch (BM bm) ary
         else
-          let child = two (nextShift shift) k1 v1 k2 v2
+          let child = two (nextShift shift) k1# v1 k2# v2
               bm = Bits.bit idx1
            in Branch (BM bm) (smallArrayFromList [child])
 
 delete :: Word64 -> Word64Map a -> Word64Map a
-delete = deleteAtShift 0#
+delete k m = case k of
+  W64# k# -> deleteAtShift 0# k# m
 
-deleteAtShift :: Shift -> Word64 -> Word64Map a -> Word64Map a
-deleteAtShift !shift k m = go shift m
+deleteAtShift :: Shift -> Word64# -> Word64Map a -> Word64Map a
+deleteAtShift !shift k# m = go shift m
  where
-  go _ (Leaf k' _) | k == k' = empty
-  go _ leaf@(Leaf _ _) = leaf
+  go _ leaf@(Leaf k' _) =
+    case k' of
+      W64# k'# ->
+        case eqWord64# k# k'# of
+          1# -> empty
+          _ -> leaf
   go !s (Branch (BM bm) ary) =
-    case index s k (BM bm) of
+    case index s k# (BM bm) of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index (BM bit) i Match ->
         let child = indexSmallArray ary i
@@ -409,17 +439,23 @@ adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f = adjustWithKey (\_ x -> f x)
 
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
-adjustWithKey f k m = go 0# m
+adjustWithKey f k m = case k of
+  W64# k# ->
+    let kBox = W64# k#
+     in go kBox k# 0# m
  where
-  go _ (Leaf k' v)
-    | k == k' = Leaf k (f k v)
-    | otherwise = Leaf k' v
-  go !shift (Branch (BM bm) ary) =
-    case index shift k (BM bm) of
+  go kBox k# _ leaf@(Leaf k' v) =
+    case k' of
+      W64# k'# ->
+        case eqWord64# k# k'# of
+          1# -> Leaf kBox (f kBox v)
+          _ -> leaf
+  go kBox k# !shift (Branch (BM bm) ary) =
+    case index shift k# (BM bm) of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = go (nextShift shift) child
+            newChild = go kBox k# (nextShift shift) child
          in Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
@@ -452,8 +488,12 @@ unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShift !shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
-  (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
-  (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
+  (Leaf k1 v1, _) ->
+    case k1 of
+      W64# k1# -> insertAtShift shift k1# v1 m2
+  (_, Leaf k2 v2) ->
+    case k2 of
+      W64# k2# -> insertIfNotExistsAtShift shift k2# v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
     let newBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit newBm b]
@@ -485,8 +525,12 @@ unionWithKeyAtShift ::
 unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
-  (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
-  (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
+  (Leaf k1 v1, _) ->
+    case k1 of
+      W64# k1# -> insertWithKeyAtShift shift f k1# v1 m2
+  (_, Leaf k2 v2) ->
+    case k2 of
+      W64# k2# -> insertWithKeyAtShift shift (\k new old -> f k old new) k2# v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
     let newBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit newBm b]
@@ -508,21 +552,25 @@ unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
      in collapse (BM newBm) newAry
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExists k v m = insertIfNotExistsAtShift 0# k v m
+insertIfNotExists k v m = case k of
+  W64# k# -> insertIfNotExistsAtShift 0# k# v m
 
-insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExistsAtShift !shift k v m = case m of
-  Leaf k' v'
-    | k == k' -> m
-    | otherwise -> two shift k v k' v'
+insertIfNotExistsAtShift :: Shift -> Word64# -> a -> Word64Map a -> Word64Map a
+insertIfNotExistsAtShift !shift k# v m = case m of
+  Leaf k' v' ->
+    case k' of
+      W64# k'# ->
+        case eqWord64# k# k'# of
+          1# -> m
+          _ -> two shift k# v k'# v'
   Branch (BM bm) ary ->
-    case index shift k (BM bm) of
+    case index shift k# (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertIfNotExistsAtShift (nextShift shift) k v child
+            newChild = insertIfNotExistsAtShift (nextShift shift) k# v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf (W64# k#) v) ary)
 
 fromList :: [(Word64, a)] -> Word64Map a
 fromList = Foldable.foldl' (\m (k, v) -> insert k v m) empty
@@ -575,20 +623,26 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2
   go _ m1 (Branch (BM 0) _) = g1 m1
-  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
-    Nothing -> unionAtShift shift (g1 (Leaf k1 v1)) (g2 m2)
-    Just v2 ->
-      let rest = deleteAtShift shift k1 m2
-       in case f k1 v1 v2 of
-            Nothing -> g2 rest
-            Just v' -> insertAtShift shift k1 v' (g2 rest)
-  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
-    Nothing -> unionAtShift shift (g1 m1) (g2 (Leaf k2 v2))
-    Just v1 ->
-      let rest = deleteAtShift shift k2 m1
-       in case f k2 v1 v2 of
-            Nothing -> g1 rest
-            Just v' -> insertAtShift shift k2 v' (g1 rest)
+  go !shift (Leaf k1 v1) m2 =
+    case k1 of
+      W64# k1# ->
+        case lookupAtShift# shift k1# m2 of
+          Nothing -> unionAtShift shift (g1 (Leaf k1 v1)) (g2 m2)
+          Just v2 ->
+            let rest = deleteAtShift shift k1# m2
+             in case f k1 v1 v2 of
+                  Nothing -> g2 rest
+                  Just v' -> insertAtShift shift k1# v' (g2 rest)
+  go !shift m1 (Leaf k2 v2) =
+    case k2 of
+      W64# k2# ->
+        case lookupAtShift# shift k2# m1 of
+          Nothing -> unionAtShift shift (g1 m1) (g2 (Leaf k2 v2))
+          Just v1 ->
+            let rest = deleteAtShift shift k2# m1
+             in case f k2 v1 v2 of
+                  Nothing -> g1 rest
+                  Just v' -> insertAtShift shift k2# v' (g1 rest)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let allBm = bm1 .|. bm2
         bits = [b | b <- [0 .. 63], testBit allBm b]
@@ -616,16 +670,22 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
   go _ m1 (Branch (BM 0) _) = m1
-  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
-    Nothing -> Leaf k1 v1
-    Just v2 -> case f v1 v2 of
-      Nothing -> empty
-      Just v1' -> Leaf k1 v1'
-  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
-    Nothing -> m1
-    Just v1 -> case f v1 v2 of
-      Nothing -> deleteAtShift shift k2 m1
-      Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
+  go !shift (Leaf k1 v1) m2 =
+    case k1 of
+      W64# k1# ->
+        case lookupAtShift# shift k1# m2 of
+          Nothing -> Leaf k1 v1
+          Just v2 -> case f v1 v2 of
+            Nothing -> empty
+            Just v1' -> Leaf k1 v1'
+  go !shift m1 (Leaf k2 v2) =
+    case k2 of
+      W64# k2# ->
+        case lookupAtShift# shift k2# m1 of
+          Nothing -> m1
+          Just v1 -> case f v1 v2 of
+            Nothing -> deleteAtShift shift k2# m1
+            Just v1' -> insertAtShift shift k2# v1' (deleteAtShift shift k2# m1)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
         pairs = flip fmap bits1 $ \b ->
@@ -653,12 +713,18 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
   go _ _ (Branch (BM 0) _) = empty
-  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
-    Nothing -> empty
-    Just v2 -> Leaf k1 (f k1 v1 v2)
-  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
-    Nothing -> empty
-    Just v1 -> Leaf k2 (f k2 v1 v2)
+  go !shift (Leaf k1 v1) m2 =
+    case k1 of
+      W64# k1# ->
+        case lookupAtShift# shift k1# m2 of
+          Nothing -> empty
+          Just v2 -> Leaf k1 (f k1 v1 v2)
+  go !shift m1 (Leaf k2 v2) =
+    case k2 of
+      W64# k2# ->
+        case lookupAtShift# shift k2# m1 of
+          Nothing -> empty
+          Just v1 -> Leaf k2 (f k2 v1 v2)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let commonBm = bm1 .&. bm2
         bits = [b | b <- [0 .. 63], testBit commonBm b]
@@ -761,9 +827,12 @@ isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = True
   go _ _ (Branch (BM 0) _) = False
-  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
-    Nothing -> False
-    Just v2 -> f v1 v2
+  go !shift (Leaf k1 v1) m2 =
+    case k1 of
+      W64# k1# ->
+        case lookupAtShift# shift k1# m2 of
+          Nothing -> False
+          Just v2 -> f v1 v2
   go _ (Branch _ _) (Leaf _ _) = False
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let bits1 = [b | b <- [0 .. 63], testBit bm1 b]

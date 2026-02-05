@@ -73,7 +73,7 @@ fromWord64 = K
 main :: IO ()
 main =
   defaultMain $
-    localOption (QuickCheckTests 200) $
+    localOption (QuickCheckTests 1000) $
       localOption (QuickCheckMaxSize 500) tests
 
 tests :: TestTree

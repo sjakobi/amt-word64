@@ -1,7 +1,0 @@
-repos:
-  - repo: https://github.com/fourmolu/fourmolu
-    rev: v0.17.0.0
-    hooks:
-      - id: fourmolu
-        args: ["-i"]
-        files: '\.(hs|lhs)$'

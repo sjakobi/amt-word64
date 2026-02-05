@@ -634,7 +634,12 @@ intersectionWithKey f m1_ m2_ = go (0 :: Shift) m1_ m2_
         validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
         newAry = smallArrayFromList [r | (_, r) <- validPairs]
-     in mkBranch (BM newBm) newAry
+     in case sizeofSmallArray newAry of
+          0 -> empty
+          1 -> case indexSmallArray newAry 0 of
+            l@Leaf{} -> l
+            _ -> Branch (BM newBm) newAry
+          _ -> Branch (BM newBm) newAry
 
 filter :: (a -> Bool) -> Word64Map a -> Word64Map a
 filter f = filterWithKey (\_ x -> f x)

@@ -315,6 +315,21 @@ insert k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
+insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
+insertUnsafe k v m = case m of
+  Branch (BM 0) _ -> singleton k v
+  Leaf k' v'
+    | k == k' -> Leaf k v
+    | otherwise -> two 0# k v k' v'
+  Branch (BM bm) ary ->
+    case index 0# k (BM bm) of
+      Index _ i Match ->
+        let child = indexSmallArray ary i
+            newChild = insertAtShiftUnsafe (nextShift 0#) k v child
+         in Branch (BM bm) (updateAtUnsafe i newChild ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAtUnsafe i (Leaf k v) ary)
+
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
 
@@ -364,6 +379,21 @@ insertAtShift !s k v m = case m of
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+
+-- | Only valid for internal nodes.
+insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertAtShiftUnsafe !s k v m = case m of
+  Leaf k' v'
+    | k == k' -> Leaf k v
+    | otherwise -> two s k v k' v'
+  Branch (BM bm) ary ->
+    case index s k (BM bm) of
+      Index _ i Match ->
+        let child = indexSmallArray ary i
+            newChild = insertAtShiftUnsafe (nextShift s) k v child
+         in Branch (BM bm) (updateAtUnsafe i newChild ary)
+      Index (BM bit) i NoMatch ->
+        Branch (BM (bm .|. bit)) (insertAtUnsafe i (Leaf k v) ary)
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two !shift k1 v1 k2 v2 =
@@ -525,7 +555,7 @@ insertIfNotExistsAtShift !shift k v m = case m of
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 fromList :: [(Word64, a)] -> Word64Map a
-fromList = Foldable.foldl' (\m (k, v) -> insert k v m) empty
+fromList = Foldable.foldl' (\m (k, v) -> insertUnsafe k v m) empty
 
 toList :: Word64Map a -> [(Word64, a)]
 toList (Leaf k v) = [(k, v)]
@@ -539,10 +569,27 @@ insertAt i a ary = runSmallArray $ do
   copySmallArray mary (i + 1) ary i (n - i)
   return mary
 
+insertAtUnsafe :: Int -> a -> SmallArray a -> SmallArray a
+insertAtUnsafe i a ary = runSmallArray $ do
+  let n = sizeofSmallArray ary
+  mary <- newSmallArray (n + 1) (error "insertAtUnsafe: uninitialized")
+  copySmallArray mary 0 ary 0 i
+  writeSmallArray mary i a
+  copySmallArray mary (i + 1) ary i (n - i)
+  return mary
+
 updateAt :: Int -> a -> SmallArray a -> SmallArray a
 updateAt i a ary = runSmallArray $ do
   let n = sizeofSmallArray ary
   mary <- newSmallArray n a
+  copySmallArray mary 0 ary 0 n
+  writeSmallArray mary i a
+  return mary
+
+updateAtUnsafe :: Int -> a -> SmallArray a -> SmallArray a
+updateAtUnsafe i a ary = runSmallArray $ do
+  let n = sizeofSmallArray ary
+  mary <- newSmallArray n (error "updateAtUnsafe: uninitialized")
   copySmallArray mary 0 ary 0 n
   writeSmallArray mary i a
   return mary

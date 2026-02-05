@@ -637,7 +637,11 @@ difference :: Word64Map a -> Word64Map b -> Word64Map a
 difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2
 
 differenceWith ::
-  (a -> b -> Maybe a) -> Word64Map a -> Word64Map b -> Word64Map a
+  forall a b.
+  (a -> b -> Maybe a) ->
+  Word64Map a ->
+  Word64Map b ->
+  Word64Map a
 differenceWith f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
@@ -653,19 +657,71 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
       Nothing -> deleteAtShift shift k2 m1
       Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
-        pairs = flip fmap bits1 $ \b ->
-          let bit = Bits.bit b
-              i1 = popCount (bm1 .&. (bit - 1))
-              mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
-           in case mIndex2 of
-                Nothing -> (b, indexSmallArray ary1 i1)
-                Just i2 ->
-                  (b, go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2))
-        validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
-        newAry = smallArrayFromList [r | (_, r) <- validPairs]
+    let (newBm, newAry) = differenceBranch shift bm1 ary1 bm2 ary2
      in collapse (BM newBm) newAry
+
+  differenceBranch ::
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    (Word64, SmallArray (Word64Map a))
+  differenceBranch shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
+
+  goArray ::
+    forall s.
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    ST s (Word64, SmallArray (Word64Map a))
+  goArray shift bm1 ary1 bm2 ary2 = do
+    let unionBm = bm1 .|. bm2
+        n = popCount bm1
+    if n == 0
+      then pure (0, mempty)
+      else do
+        mary <- newSmallArray n empty
+        let finish j bmAcc =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  if j < n
+                    then shrinkSmallMutableArray mary j
+                    else pure ()
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (bmAcc, newAry)
+            step !w !i1 !i2 !j !newBm
+              | w == 0 = finish j newBm
+              | otherwise =
+                  let bitPos = countTrailingZeros w
+                      bit = 1 `unsafeShiftL` bitPos
+                      has1 = bm1 .&. bit /= 0
+                      has2 = bm2 .&. bit /= 0
+                      (m1, i1') =
+                        if has1
+                          then (Just (indexSmallArray ary1 i1), i1 + 1)
+                          else (Nothing, i1)
+                      (m2, i2') =
+                        if has2
+                          then (Just (indexSmallArray ary2 i2), i2 + 1)
+                          else (Nothing, i2)
+                      w' = w .&. (w - 1)
+                   in case (m1, m2) of
+                        (Just c1, Just c2) ->
+                          let child = go (nextShift shift) c1 c2
+                           in if null child
+                                then step w' i1' i2' j newBm
+                                else do
+                                  writeSmallArray mary j child
+                                  step w' i1' i2' (j + 1) (newBm .|. bit)
+                        (Just c1, Nothing) -> do
+                          writeSmallArray mary j c1
+                          step w' i1' i2' (j + 1) (newBm .|. bit)
+                        _ -> step w' i1' i2' j newBm
+        step unionBm 0 0 0 0
 
 intersection :: Word64Map a -> Word64Map b -> Word64Map a
 intersection m1 m2 = intersectionWith (\x _ -> x) m1 m2
@@ -674,7 +730,11 @@ intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
 intersectionWith f = intersectionWithKey (\_ x y -> f x y)
 
 intersectionWithKey ::
-  (Word64 -> a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
+  forall a b c.
+  (Word64 -> a -> b -> c) ->
+  Word64Map a ->
+  Word64Map b ->
+  Word64Map c
 intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
@@ -686,18 +746,69 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
     Nothing -> empty
     Just v1 -> Leaf k2 (f k2 v1 v2)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let commonBm = bm1 .&. bm2
-        bits = [b | b <- [0 .. 63], testBit commonBm b]
-        pairs = flip fmap bits $ \b ->
-          let bit = Bits.bit b
-              i1 = popCount (bm1 .&. (bit - 1))
-              i2 = popCount (bm2 .&. (bit - 1))
-              child = go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
-           in (b, child)
-        validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-        newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
-        newAry = smallArrayFromList [r | (_, r) <- validPairs]
+    let (newBm, newAry) = intersectBranch shift bm1 ary1 bm2 ary2
      in collapse (BM newBm) newAry
+
+  intersectBranch ::
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    (Word64, SmallArray (Word64Map c))
+  intersectBranch shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
+
+  goArray ::
+    forall s.
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    ST s (Word64, SmallArray (Word64Map c))
+  goArray shift bm1 ary1 bm2 ary2 = do
+    let commonBm = bm1 .&. bm2
+        unionBm = bm1 .|. bm2
+        n = popCount commonBm
+    if n == 0
+      then pure (0, mempty)
+      else do
+        mary <- newSmallArray n empty
+        let finish j bmAcc =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  if j < n
+                    then shrinkSmallMutableArray mary j
+                    else pure ()
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (bmAcc, newAry)
+            step !w !i1 !i2 !j !newBm
+              | w == 0 = finish j newBm
+              | otherwise =
+                  let bitPos = countTrailingZeros w
+                      bit = 1 `unsafeShiftL` bitPos
+                      has1 = bm1 .&. bit /= 0
+                      has2 = bm2 .&. bit /= 0
+                      (m1, i1') =
+                        if has1
+                          then (Just (indexSmallArray ary1 i1), i1 + 1)
+                          else (Nothing, i1)
+                      (m2, i2') =
+                        if has2
+                          then (Just (indexSmallArray ary2 i2), i2 + 1)
+                          else (Nothing, i2)
+                      w' = w .&. (w - 1)
+                   in case (m1, m2) of
+                        (Just c1, Just c2) ->
+                          let child = go (nextShift shift) c1 c2
+                           in if null child
+                                then step w' i1' i2' j newBm
+                                else do
+                                  writeSmallArray mary j child
+                                  step w' i1' i2' (j + 1) (newBm .|. bit)
+                        _ -> step w' i1' i2' j newBm
+        step unionBm 0 0 0 0
 
 filter :: (a -> Bool) -> Word64Map a -> Word64Map a
 filter f = filterWithKey (\_ x -> f x)

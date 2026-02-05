@@ -207,6 +207,10 @@ validSubtrees shift prefix bm ary
             bits
             children
 
+{- | Compute the bitmap bit for @k@ at @shift@ and return the 'Index'.
+
+Use this when the array index is needed regardless of presence.
+-}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =
   let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)

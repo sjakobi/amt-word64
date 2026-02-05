@@ -1,5 +1,4 @@
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE UnliftedNewtypes #-}
 
 module Amt.Word64.Map
   ( Word64Map
@@ -128,28 +127,28 @@ data Index = Index !Bitmap !Int !BitMatch
 data BitMatch = NoMatch | Match
 
 -- | Unlifted shift counter in multiples of 6 bits.
-newtype Shift = Shift Int#
+type Shift = Int#
 
 -- | Boxed shift value for diagnostics and 'InvariantViolation' payloads.
 newtype ShiftBox = ShiftBox Int
   deriving (Eq, Show)
 
 shiftToInt :: Shift -> Int
-shiftToInt (Shift s) = I# s
+shiftToInt s = I# s
 {-# INLINE shiftToInt #-}
 
 nextShift :: Shift -> Shift
-nextShift (Shift s) = Shift (s +# 6#)
+nextShift s = s +# 6#
 {-# INLINE nextShift #-}
 
 shiftGE64 :: Shift -> Bool
-shiftGE64 (Shift s) = case s >=# 64# of
+shiftGE64 s = case s >=# 64# of
   1# -> True
   _ -> False
 {-# INLINE shiftGE64 #-}
 
 shiftToBox :: Shift -> ShiftBox
-shiftToBox (Shift s) = ShiftBox (I# s)
+shiftToBox s = ShiftBox (I# s)
 {-# INLINE shiftToBox #-}
 
 valid :: Word64Map a -> Maybe InvariantViolation
@@ -158,7 +157,7 @@ valid (Branch (BM 0) ary)
   | otherwise = Just $ BitmapCountMismatch 0 n
  where
   n = sizeofSmallArray ary
-valid t = validInternal (Shift 0#) 0 t
+valid t = validInternal 0# 0 t
 
 validInternal :: Shift -> Word64 -> Word64Map a -> Maybe InvariantViolation
 validInternal !shift !prefix (Leaf k _) =
@@ -228,7 +227,7 @@ size (Branch _ ary) = Foldable.sum (fmap size ary)
 
 lookup :: Word64 -> Word64Map a -> Maybe a
 lookup k m = case k of
-  W64# ww -> lookupAtShift# (Shift 0#) ww m
+  W64# ww -> lookupAtShift# 0# ww m
 
 lookupAtShift :: Shift -> Word64 -> Word64Map a -> Maybe a
 lookupAtShift shift k = case k of
@@ -283,12 +282,12 @@ insert k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k v
-    | otherwise -> two (Shift 0#) k v k' v'
+    | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
-    case index (Shift 0#) k (BM bm) of
+    case index 0# k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift (Shift 0#)) k v child
+            newChild = insertAtShift (nextShift 0#) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -302,12 +301,12 @@ insertWithKey f k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
-    | otherwise -> two (Shift 0#) k v k' v'
+    | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
-    case index (Shift 0#) k (BM bm) of
+    case index 0# k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift (Shift 0#)) f k v child
+            newChild = insertWithKeyAtShift (nextShift 0#) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -361,7 +360,7 @@ two !shift k1 v1 k2 v2 =
            in Branch (BM bm) (smallArrayFromList [child])
 
 delete :: Word64 -> Word64Map a -> Word64Map a
-delete = deleteAtShift (Shift 0#)
+delete = deleteAtShift 0#
 
 deleteAtShift :: Shift -> Word64 -> Word64Map a -> Word64Map a
 deleteAtShift !shift k m = go shift m
@@ -387,7 +386,7 @@ adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f = adjustWithKey (\_ x -> f x)
 
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
-adjustWithKey f k m = go (Shift 0#) m
+adjustWithKey f k m = go 0# m
  where
   go _ (Leaf k' v)
     | k == k' = Leaf k (f k v)
@@ -424,7 +423,7 @@ mapWithKey f (Leaf k v) = Leaf k (f k v)
 mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
-union m1 m2 = unionAtShift (Shift 0#) m1 m2
+union m1 m2 = unionAtShift 0# m1 m2
 
 unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShift !shift m1 m2 = case (m1, m2) of
@@ -456,7 +455,7 @@ unionWith f = unionWithKey (\_ x y -> f x y)
 
 unionWithKey ::
   (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
-unionWithKey f m1 m2 = unionWithKeyAtShift (Shift 0#) f m1 m2
+unionWithKey f m1 m2 = unionWithKeyAtShift 0# f m1 m2
 
 unionWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
@@ -486,7 +485,7 @@ unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
      in collapse (BM newBm) newAry
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExists k v m = insertIfNotExistsAtShift (Shift 0#) k v m
+insertIfNotExists k v m = insertIfNotExistsAtShift 0# k v m
 
 insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExistsAtShift !shift k v m = case m of
@@ -549,7 +548,7 @@ mergeWithKey ::
   Word64Map a ->
   Word64Map b ->
   Word64Map c
-mergeWithKey f g1 g2 m1_ m2_ = go (Shift 0#) m1_ m2_
+mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2
   go _ m1 (Branch (BM 0) _) = g1 m1
@@ -590,7 +589,7 @@ difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2
 
 differenceWith ::
   (a -> b -> Maybe a) -> Word64Map a -> Word64Map b -> Word64Map a
-differenceWith f m1_ m2_ = go (Shift 0#) m1_ m2_
+differenceWith f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
   go _ m1 (Branch (BM 0) _) = m1
@@ -627,7 +626,7 @@ intersectionWith f = intersectionWithKey (\_ x y -> f x y)
 
 intersectionWithKey ::
   (Word64 -> a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
-intersectionWithKey f m1_ m2_ = go (Shift 0#) m1_ m2_
+intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
   go _ _ (Branch (BM 0) _) = empty
@@ -735,7 +734,7 @@ isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
 isSubmapOf = isSubmapOfBy (==)
 
 isSubmapOfBy :: (a -> b -> Bool) -> Word64Map a -> Word64Map b -> Bool
-isSubmapOfBy f m1_ m2_ = go (Shift 0#) m1_ m2_
+isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = True
   go _ _ (Branch (BM 0) _) = False

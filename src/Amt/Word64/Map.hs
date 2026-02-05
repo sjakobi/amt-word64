@@ -201,6 +201,12 @@ validSubtrees shift prefix bm ary
             bits
             children
 
+{- | Compute the bitmap bit for @k@ at @shift@ plus the child index.
+
+The resulting 'Index' includes the bit mask for the current slot, the
+position in the compact 'SmallArray', and whether the bit is present.
+This always computes 'popCount' for the index.
+-}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =
   let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
@@ -209,6 +215,19 @@ index shift k (BM bm) =
       match = if bm .&. bit == 0 then NoMatch else Match
    in Index (BM bit) i match
 {-# INLINE index #-}
+
+{- | Compute the child index only when the bitmap bit is present.
+
+This avoids a 'popCount' when the lookup misses.
+-}
+indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
+indexMatch shift k (BM bm) =
+  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
+      bit = 1 `unsafeShiftL` ix
+   in if bm .&. bit == 0
+        then Nothing
+        else Just (popCount (bm .&. (bit - 1)))
+{-# INLINE indexMatch #-}
 
 empty :: Word64Map a
 empty = Branch (BM 0) mempty
@@ -243,9 +262,9 @@ lookupAtShift# shift k = go shift
           1# -> Just v
           _ -> Nothing
   go !s (Branch (BM bm) ary) =
-    case index s (W64# k) (BM bm) of
-      Index _ _ NoMatch -> Nothing
-      Index _ i Match -> go (nextShift s) (indexSmallArray ary i)
+    case indexMatch s (W64# k) (BM bm) of
+      Nothing -> Nothing
+      Just i -> go (nextShift s) (indexSmallArray ary i)
 
 member :: Word64 -> Word64Map a -> Bool
 member k m = case lookup k m of

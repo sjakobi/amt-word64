@@ -121,6 +121,12 @@ instance Traversable Word64Map where
 
 newtype Bitmap = BM Word64
 
+{- | Bitmap query result: bit mask for the current slot, compact array index,
+and whether the bit is present.
+
+The index is the position in the compact 'SmallArray' for this slot.
+Construct with 'index' when the index is needed regardless of presence.
+-}
 data Index = Index !Bitmap !Int !BitMatch
 
 -- | Does the Bitmap contain the Word64 at the given Shift?
@@ -201,12 +207,6 @@ validSubtrees shift prefix bm ary
             bits
             children
 
-{- | Compute the bitmap bit for @k@ at @shift@ plus the child index.
-
-The resulting 'Index' includes the bit mask for the current slot, the
-position in the compact 'SmallArray', and whether the bit is present.
-This always computes 'popCount' for the index.
--}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =
   let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
@@ -216,7 +216,7 @@ index shift k (BM bm) =
    in Index (BM bit) i match
 {-# INLINE index #-}
 
-{- | Compute the child index only when the bitmap bit is present.
+{- | Like 'index', but only returns the index when the bit is present.
 
 This avoids a 'popCount' when the lookup misses.
 -}

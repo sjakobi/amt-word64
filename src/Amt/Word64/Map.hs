@@ -1022,7 +1022,12 @@ mapEitherWithKey f m = go m
 isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
 isSubmapOf = isSubmapOfBy (==)
 
-isSubmapOfBy :: (a -> b -> Bool) -> Word64Map a -> Word64Map b -> Bool
+isSubmapOfBy ::
+  forall a b.
+  (a -> b -> Bool) ->
+  Word64Map a ->
+  Word64Map b ->
+  Bool
 isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = True
@@ -1032,14 +1037,32 @@ isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
     Just v2 -> f v1 v2
   go _ (Branch _ _) (Leaf _ _) = False
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let bits1 = [b | b <- [0 .. 63], testBit bm1 b]
-     in all
-          ( \b ->
-              let bit = Bits.bit b
-                  i1 = popCount (bm1 .&. (bit - 1))
-                  mIndex2 = if bm2 .&. bit /= 0 then Just (popCount (bm2 .&. (bit - 1))) else Nothing
-               in case mIndex2 of
-                    Nothing -> False
-                    Just i2 -> go (nextShift shift) (indexSmallArray ary1 i1) (indexSmallArray ary2 i2)
-          )
-          bits1
+    submapBranch (nextShift shift) bm1 ary1 bm2 ary2
+
+  submapBranch ::
+    Shift ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    Bool
+  submapBranch shift bm1 ary1 bm2 ary2 = step (bm1 .|. bm2) 0 0
+   where
+    step !w !i1 !i2
+      | w == 0 = True
+      | otherwise =
+          let bitPos = countTrailingZeros w
+              bit = 1 `unsafeShiftL` bitPos
+              has1 = bm1 .&. bit /= 0
+              has2 = bm2 .&. bit /= 0
+              w' = w .&. (w - 1)
+           in case (has1, has2) of
+                (True, True) ->
+                  let c1 = indexSmallArray ary1 i1
+                      c2 = indexSmallArray ary2 i2
+                   in if go shift c1 c2
+                        then step w' (i1 + 1) (i2 + 1)
+                        else False
+                (True, False) -> False
+                (False, True) -> step w' i1 (i2 + 1)
+                (False, False) -> step w' i1 i2

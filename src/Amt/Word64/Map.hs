@@ -654,7 +654,12 @@ filterWithKey f m = go m
         pairs = [(b, r) | (b, r) <- zip bits results, not (null r)]
         newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 pairs
         newAry = smallArrayFromList [r | (_, r) <- pairs]
-     in mkBranch (BM newBm) newAry
+     in case sizeofSmallArray newAry of
+          0 -> empty
+          1 -> case indexSmallArray newAry 0 of
+            l@Leaf{} -> l
+            _ -> Branch (BM newBm) newAry
+          _ -> Branch (BM newBm) newAry
 
 partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
 partition f = partitionWithKey (\_ x -> f x)

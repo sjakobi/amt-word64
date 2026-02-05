@@ -51,6 +51,7 @@ import Amt.Word64.Map
   , updateWithKey
   , valid
   )
+import Data.Bits qualified as Bits
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
 import Data.Word (Word64)
@@ -208,6 +209,10 @@ tests =
     , testGroup
         "mergeWithKey"
         [ testProperty "matches Data.Map" prop_mergeWithKey_model
+        , testProperty "matches unionWithKey" prop_mergeWithKey_unionWithKey_model
+        , testProperty
+            "matches differenceWithKey"
+            prop_mergeWithKey_differenceWithKey_model
         , testProperty "valid invariant" prop_mergeWithKey_valid
         ]
     , testGroup
@@ -921,3 +926,23 @@ prop_mergeWithKey_valid e1 e2 =
       m1 = fromKList e1
       m2 = fromKList e2
    in checkValid (mergeWithKey (\k x y -> f (fromWord64 k) x y) g1 g2 m1 m2)
+
+prop_mergeWithKey_unionWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_unionWithKey_model e1 e2 =
+  let fW k x y = x + y + fromIntegral (k Bits..&. 7)
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in toSortedList (mergeWithKey (\k x y -> Just (fW k x y)) id id m1 m2)
+        === toSortedList (unionWithKey (\k x y -> fW k x y) m1 m2)
+
+prop_mergeWithKey_differenceWithKey_model ::
+  [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_differenceWithKey_model e1 e2 =
+  let f x y =
+        if even (x + y)
+          then Just (x - y)
+          else Nothing
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in toSortedList (mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2)
+        === toSortedList (differenceWith f m1 m2)

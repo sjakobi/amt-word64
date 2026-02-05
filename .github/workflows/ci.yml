@@ -6,7 +6,8 @@ on:
   pull_request:
     branches: [master]
   schedule:
-    - cron: '0 0 * * *'
+    # This schedule ensures the workflow runs every two weeks (1st and 15th of each month at 00:00 UTC)
+    - cron: '0 0 1,15 * *'
 
 jobs:
   tool-output:

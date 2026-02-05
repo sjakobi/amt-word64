@@ -68,7 +68,7 @@ data InvariantViolation
       , ivArraySize :: !Int
       }
   | RedundantBranch
-      { ivSize :: !Int
+      { ivPrefix :: !Word64
       }
   | UnexpectedEmptyBranch
   deriving (Show, Eq)
@@ -117,38 +117,47 @@ data BitMatch = NoMatch | Match
 type Shift = Int
 
 valid :: Word64Map a -> Maybe InvariantViolation
-valid = go True 0 0
+valid (Branch (BM 0) ary)
+  | n == 0 = Nothing
+  | otherwise = Just $ BitmapCountMismatch 0 n
  where
-  go _ shift prefix (Leaf k _) =
-    let mask = if shift >= 64 then complement 0 else (Bits.bit shift :: Word64) - 1
-     in if (k .&. mask) == prefix
-          then Nothing
-          else Just $ PrefixMismatch k shift prefix
-  go isRoot shift prefix (Branch (BM bm) ary) =
+  n = sizeofSmallArray ary
+valid t = validInternal 0 0 t
+
+validInternal shift prefix (Leaf k _) =
+  let mask = if shift >= 64 then complement 0 else (Bits.bit shift :: Word64) - 1
+   in if (k .&. mask) == prefix
+        then Nothing
+        else Just $ PrefixMismatch k shift prefix
+validInternal shift prefix (Branch (BM 0) ary) = Just UnexpectedEmptyBranch
+validInternal shift prefix (Branch (BM bm) ary) =
+  let children = Foldable.toList ary
+      bits = [i | i <- [0 .. 63], testBit bm i]
+      n = sizeofSmallArray ary
+      s = size (Branch (BM bm) ary)
+   in if popCount bm /= n
+        then Just $ BitmapCountMismatch bm n
+        else validSubtrees 0 0 bm ary
+
+validSubtrees shift prefix bm ary
+  | sizeofSmallArray ary == 1
+  , Leaf{} <- indexSmallArray ary 0 =
+      Just $ RedundantBranch prefix
+  | otherwise = go
+ where
+  go =
     let children = Foldable.toList ary
         bits = [i | i <- [0 .. 63], testBit bm i]
-        n = sizeofSmallArray ary
-        s = size (Branch (BM bm) ary)
-     in if popCount bm /= n
-          then Just $ BitmapCountMismatch bm n
-          else
-            if not (isRoot || s == 0 || s >= 2)
-              then Just $ RedundantBranch s
-              else
-                if not (isRoot || bm /= 0)
-                  then Just UnexpectedEmptyBranch
-                  else
-                    Foldable.asum $
-                      zipWith
-                        ( \i child ->
-                            go
-                              False
-                              (shift + 6)
-                              (prefix .|. (fromIntegral i `Bits.shiftL` shift :: Word64))
-                              child
-                        )
-                        bits
-                        children
+     in Foldable.asum $
+          zipWith
+            ( \i child ->
+                validInternal
+                  (shift + 6)
+                  (prefix .|. (fromIntegral i `Bits.shiftL` shift :: Word64))
+                  child
+            )
+            bits
+            children
 
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift k (BM bm) =

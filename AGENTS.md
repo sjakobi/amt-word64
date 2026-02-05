@@ -44,6 +44,15 @@ Use standard `cabal` commands for development:
 4. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
 5. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations. This permission is explicitly confirmed and should be treated as durable for this repo.
 6. **Command Permissions**: Do not ask before creating commits on feature branches. You have standing permission to run non-destructive git commands (`status`, `log`, `diff`, `add`, `stash`, `switch`, `fetch`, `push`, `rebase`, `worktree add/remove`). You may also run standard build/test commands (`cabal build`, `cabal test`, `cabal run`, `cabal clean`) and formatting (`fourmolu --mode inplace src test`) without asking. For network calls, `gh` is permitted for PR creation and review fetching, provided it does not perform destructive operations. Ask before running destructive commands like `reset --hard`, `checkout --`, or rewriting remote history unless explicitly requested.
+7. **Commit Message Format**: Keep lines under 72 characters. Use a short subject line, then include an `Explanation:` paragraph and a `Model:` line on their own lines. Example:
+   ```
+   Subject line
+
+   Explanation: short summary wrapped to 72 columns.
+
+   Model: GPT-5
+   ```
+8. **Core Dumps**: `cabal.project.local` is typically created from `cabal.project.local.dump-code` to enable Core/Code-Prep dumps. It is expected to remain untracked; do not add it to git unless explicitly requested.
 
 ## Key Development Patterns
 

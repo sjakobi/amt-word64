@@ -204,7 +204,7 @@ lookupAtShift shift k = go shift
   go _ (Leaf k' v)
     | k == k' = Just v
     | otherwise = Nothing
-  go s (Branch (BM bm) ary) =
+  go !s (Branch (BM bm) ary) =
     case index s k (BM bm) of
       Index _ _ NoMatch -> Nothing
       Index _ i Match -> go (s + 6) (indexSmallArray ary i)
@@ -276,7 +276,7 @@ insertWithKey f k v m = case m of
 -- | Only valid for internal nodes.
 insertWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWithKeyAtShift s f k v m = case m of
+insertWithKeyAtShift !s f k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
     | otherwise -> two s k v k' v'
@@ -291,7 +291,7 @@ insertWithKeyAtShift s f k v m = case m of
 
 -- | Only valid for internal nodes.
 insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertAtShift s k v m = case m of
+insertAtShift !s k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two s k v k' v'
@@ -305,7 +305,7 @@ insertAtShift s k v m = case m of
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
-two shift k1 v1 k2 v2 =
+two !shift k1 v1 k2 v2 =
   let idx1 = fromIntegral ((k1 `Bits.shiftR` shift) .&. 0x3f)
       idx2 = fromIntegral ((k2 `Bits.shiftR` shift) .&. 0x3f)
    in if idx1 /= idx2
@@ -325,11 +325,11 @@ delete :: Word64 -> Word64Map a -> Word64Map a
 delete = deleteAtShift 0
 
 deleteAtShift :: Shift -> Word64 -> Word64Map a -> Word64Map a
-deleteAtShift shift k m = go shift m
+deleteAtShift !shift k m = go shift m
  where
   go _ (Leaf k' _) | k == k' = empty
   go _ leaf@(Leaf _ _) = leaf
-  go s (Branch (BM bm) ary) =
+  go !s (Branch (BM bm) ary) =
     case index s k (BM bm) of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index (BM bit) i Match ->
@@ -446,7 +446,7 @@ insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExists k v m = insertIfNotExistsAtShift 0 k v m
 
 insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExistsAtShift shift k v m = case m of
+insertIfNotExistsAtShift !shift k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'

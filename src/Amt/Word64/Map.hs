@@ -55,7 +55,7 @@ module Amt.Word64.Map
   , InvariantViolation (..)
   ) where
 
-import Control.DeepSeq (NFData (rnf))
+import Control.DeepSeq (NFData (rnf), NFData1 (liftRnf), rnf1)
 import Control.Monad.ST (ST, runST)
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
@@ -195,9 +195,13 @@ instance Monoid (Word64Map a) where
   mempty = empty
   mappend = (<>)
 
+instance NFData1 Word64Map where
+  liftRnf f (Leaf _ v) = f v
+  liftRnf f (Branch _ ary) =
+    Foldable.foldr (\m acc -> liftRnf f m `seq` acc) () ary
+
 instance NFData a => NFData (Word64Map a) where
-  rnf (Leaf _ v) = rnf v
-  rnf (Branch _ ary) = Foldable.foldr (\m acc -> rnf m `seq` acc) () ary
+  rnf = rnf1
 
 instance Data a => Data (Word64Map a) where
   gfoldl k z m = z fromList `k` toList m

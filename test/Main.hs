@@ -36,6 +36,7 @@ import Amt.Word64.Map
   , mapMaybeWithKey
   , mapWithKey
   , member
+  , mergeWithKey
   , notMember
   , null
   , partition
@@ -50,6 +51,7 @@ import Amt.Word64.Map
   , updateWithKey
   , valid
   )
+import Data.Bits qualified as Bits
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
 import Data.Word (Word64)
@@ -203,6 +205,15 @@ tests =
         "alter"
         [ testProperty "matches Data.Map" prop_alter_model
         , testProperty "valid invariant" prop_alter_valid
+        ]
+    , testGroup
+        "mergeWithKey"
+        [ testProperty "matches Data.Map" prop_mergeWithKey_model
+        , testProperty "matches unionWithKey" prop_mergeWithKey_unionWithKey_model
+        , testProperty
+            "matches differenceWithKey"
+            prop_mergeWithKey_differenceWithKey_model
+        , testProperty "valid invariant" prop_mergeWithKey_valid
         ]
     , testGroup
         "map"
@@ -888,3 +899,50 @@ prop_isSubmapOfBy_model e1 e2 =
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in isSubmapOfBy f m1 m2 === Map.isSubmapOfBy f ref1 ref2
+
+prop_mergeWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_model e1 e2 =
+  let f k x y = if even (toWord64 k + fromIntegral (x + y)) then Just (x + y) else Nothing
+      f_g1 k x = if even k then Just (x + 1) else Nothing
+      f_g2 k x = if odd k then Just (x * 2) else Nothing
+      g1 = mapMaybeWithKey f_g1
+      g2 = mapMaybeWithKey f_g2
+      refG1 = Map.mapMaybeWithKey (\k x -> f_g1 (toWord64 k) x)
+      refG2 = Map.mapMaybeWithKey (\k x -> f_g2 (toWord64 k) x)
+      m1 = fromKList e1
+      m2 = fromKList e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+   in toSortedList (mergeWithKey (\k x y -> f (fromWord64 k) x y) g1 g2 m1 m2)
+        === Map.toList (Map.mergeWithKey f refG1 refG2 ref1 ref2)
+
+prop_mergeWithKey_valid :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_valid e1 e2 =
+  let f k x y = if even (toWord64 k + fromIntegral (x + y)) then Just (x + y) else Nothing
+      f_g1 k x = if even k then Just (x + 1) else Nothing
+      f_g2 k x = if odd k then Just (x * 2) else Nothing
+      g1 = mapMaybeWithKey f_g1
+      g2 = mapMaybeWithKey f_g2
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in checkValid (mergeWithKey (\k x y -> f (fromWord64 k) x y) g1 g2 m1 m2)
+
+prop_mergeWithKey_unionWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_unionWithKey_model e1 e2 =
+  let fW k x y = x + y + fromIntegral (k Bits..&. 7)
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in toSortedList (mergeWithKey (\k x y -> Just (fW k x y)) id id m1 m2)
+        === toSortedList (unionWithKey (\k x y -> fW k x y) m1 m2)
+
+prop_mergeWithKey_differenceWithKey_model ::
+  [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_differenceWithKey_model e1 e2 =
+  let f x y =
+        if even (x + y)
+          then Just (x - y)
+          else Nothing
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in toSortedList (mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2)
+        === toSortedList (differenceWith f m1 m2)

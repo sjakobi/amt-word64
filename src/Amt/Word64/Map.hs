@@ -661,20 +661,45 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2
   go _ m1 (Branch (BM 0) _) = g1 m1
-  go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
-    Nothing -> unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 m2)
-    Just v2 ->
-      let rest = deleteAtShift shift k1 m2
-       in case f k1 v1 v2 of
-            Nothing -> g2 rest
-            Just v' -> insertAtShift shift k1 v' (g2 rest)
-  go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
-    Nothing -> unionAtShiftRoot shift (g1 m1) (g2 (Leaf k2 v2))
-    Just v1 ->
-      let rest = deleteAtShift shift k2 m1
-       in case f k2 v1 v2 of
-            Nothing -> g1 rest
-            Just v' -> insertAtShift shift k2 v' (g1 rest)
+  go !shift (Leaf k1 v1) (Leaf k2 v2)
+    | k1 == k2 =
+        case f k1 v1 v2 of
+          Nothing -> empty
+          Just v' -> Leaf k1 v'
+    | otherwise =
+        unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
+  go !shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
+    case index shift k1 (BM bm2) of
+      Index _ _ NoMatch ->
+        unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 m2)
+      Index _ i Match ->
+        let bits = [b | b <- [0 .. 63], testBit bm2 b]
+            pairs = flip fmap bits $ \b ->
+              let bit = Bits.bit b
+                  i2 = popCount (bm2 .&. (bit - 1))
+               in if i2 == i
+                    then (b, go (nextShift shift) (Leaf k1 v1) (indexSmallArray ary2 i2))
+                    else (b, g2 (indexSmallArray ary2 i2))
+            validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
+            newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
+            newAry = smallArrayFromList [r | (_, r) <- validPairs]
+         in collapse (BM newBm) newAry
+  go !shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
+    case index shift k2 (BM bm1) of
+      Index _ _ NoMatch ->
+        unionAtShiftRoot shift (g1 m1) (g2 (Leaf k2 v2))
+      Index _ i Match ->
+        let bits = [b | b <- [0 .. 63], testBit bm1 b]
+            pairs = flip fmap bits $ \b ->
+              let bit = Bits.bit b
+                  i1 = popCount (bm1 .&. (bit - 1))
+               in if i1 == i
+                    then (b, go (nextShift shift) (indexSmallArray ary1 i1) (Leaf k2 v2))
+                    else (b, g1 (indexSmallArray ary1 i1))
+            validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
+            newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
+            newAry = smallArrayFromList [r | (_, r) <- validPairs]
+         in collapse (BM newBm) newAry
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let (newBm, newAry) = runST (mergeWithKeyBranches shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry

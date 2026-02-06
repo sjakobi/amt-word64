@@ -673,32 +673,14 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
       Index _ _ NoMatch ->
         unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 m2)
       Index _ i Match ->
-        let bits = [b | b <- [0 .. 63], testBit bm2 b]
-            pairs = flip fmap bits $ \b ->
-              let bit = Bits.bit b
-                  i2 = popCount (bm2 .&. (bit - 1))
-               in if i2 == i
-                    then (b, go (nextShift shift) (Leaf k1 v1) (indexSmallArray ary2 i2))
-                    else (b, g2 (indexSmallArray ary2 i2))
-            validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-            newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
-            newAry = smallArrayFromList [r | (_, r) <- validPairs]
+        let (newBm, newAry) = runST (mergeLeafBranchLeft shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
   go !shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
     case index shift k2 (BM bm1) of
       Index _ _ NoMatch ->
         unionAtShiftRoot shift (g1 m1) (g2 (Leaf k2 v2))
       Index _ i Match ->
-        let bits = [b | b <- [0 .. 63], testBit bm1 b]
-            pairs = flip fmap bits $ \b ->
-              let bit = Bits.bit b
-                  i1 = popCount (bm1 .&. (bit - 1))
-               in if i1 == i
-                    then (b, go (nextShift shift) (indexSmallArray ary1 i1) (Leaf k2 v2))
-                    else (b, g1 (indexSmallArray ary1 i1))
-            validPairs = [(b, r) | (b, r) <- pairs, not (null r)]
-            newBm = Foldable.foldl' (\acc (b, _) -> acc .|. Bits.bit b) 0 validPairs
-            newAry = smallArrayFromList [r | (_, r) <- validPairs]
+        let (newBm, newAry) = runST (mergeLeafBranchRight shift k2 v2 bm1 ary1 i)
          in collapse (BM newBm) newAry
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let (newBm, newAry) = runST (mergeWithKeyBranches shift bm1 ary1 bm2 ary2)
@@ -765,6 +747,76 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                                   step w' i1' i2' (j + 1) (newBm .|. bit)
                         (Nothing, Nothing) -> error "mergeWithKey: impossible"
         step unionBm 0 0 0 0
+
+  mergeLeafBranchLeft ::
+    forall s.
+    Shift ->
+    Word64 ->
+    a ->
+    Word64 ->
+    SmallArray (Word64Map b) ->
+    Int ->
+    ST s (Word64, SmallArray (Word64Map c))
+  mergeLeafBranchLeft shift k1 v1 bm2 ary2 iMatch = do
+    let n = sizeofSmallArray ary2
+    mary <- newSmallArray n empty
+    let step !w !i !j !newBm
+          | w == 0 =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  shrinkSmallMutableArray mary j
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (newBm, newAry)
+          | otherwise =
+              let bit = lowBit w
+                  child = indexSmallArray ary2 i
+                  child' =
+                    if i == iMatch
+                      then go (nextShift shift) (Leaf k1 v1) child
+                      else g2 child
+                  w' = clearLowBit w
+               in if null child'
+                    then step w' (i + 1) j newBm
+                    else do
+                      writeSmallArray mary j child'
+                      step w' (i + 1) (j + 1) (newBm .|. bit)
+    step bm2 0 0 0
+
+  mergeLeafBranchRight ::
+    forall s.
+    Shift ->
+    Word64 ->
+    b ->
+    Word64 ->
+    SmallArray (Word64Map a) ->
+    Int ->
+    ST s (Word64, SmallArray (Word64Map c))
+  mergeLeafBranchRight shift k2 v2 bm1 ary1 iMatch = do
+    let n = sizeofSmallArray ary1
+    mary <- newSmallArray n empty
+    let step !w !i !j !newBm
+          | w == 0 =
+              if j == 0
+                then pure (0, mempty)
+                else do
+                  shrinkSmallMutableArray mary j
+                  newAry <- unsafeFreezeSmallArray mary
+                  pure (newBm, newAry)
+          | otherwise =
+              let bit = lowBit w
+                  child = indexSmallArray ary1 i
+                  child' =
+                    if i == iMatch
+                      then go (nextShift shift) child (Leaf k2 v2)
+                      else g1 child
+                  w' = clearLowBit w
+               in if null child'
+                    then step w' (i + 1) j newBm
+                    else do
+                      writeSmallArray mary j child'
+                      step w' (i + 1) (j + 1) (newBm .|. bit)
+    step bm1 0 0 0
 
 difference :: Word64Map a -> Word64Map b -> Word64Map a
 difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2

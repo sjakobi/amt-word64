@@ -93,6 +93,9 @@ data InvariantViolation
 
 4. __Prefix consistency__: For any node at 'Shift' @s@, all keys in its
    subtree must share the same prefix for the bits more significant than @s@.
+
+5. __Empty only at root__: The canonical empty node may only appear at the
+   root. Internal nodes are never empty.
 -}
 data Word64Map a
   = Branch !Bitmap !(SmallArray (Word64Map a))
@@ -316,9 +319,7 @@ insert k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
-{- | Unsafe insert that mutates arrays in-place under the hood.
-  Expects the input map to be non-empty except at the root.
--}
+-- | Unsafe insert that mutates arrays in-place under the hood.
 insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
 insertUnsafe k v m = case m of
   Branch (BM 0) _ -> singleton k v

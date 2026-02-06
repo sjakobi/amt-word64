@@ -128,6 +128,9 @@ instance Traversable Word64Map where
   traverse f (Leaf k v) = Leaf k <$> f v
   traverse f (Branch bm ary) = Branch bm <$> traverse (traverse f) ary
 
+instance Semigroup (Word64Map a) where
+  (<>) = union
+
 newtype Bitmap = BM Word64
 
 {- | Bitmap query result: bit mask for the current slot, compact array index,

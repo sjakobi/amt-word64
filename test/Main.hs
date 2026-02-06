@@ -106,8 +106,12 @@ fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
 main :: IO ()
 main =
   defaultMain $
-    localOption (QuickCheckTests 1000) $
-      localOption (QuickCheckMaxSize 500) tests
+    testGroup
+      "Word64Map tests"
+      [ localOption (QuickCheckTests 1000) $
+          localOption (QuickCheckMaxSize 500) tests
+      , instanceTests
+      ]
 
 tests :: TestTree
 tests =
@@ -336,18 +340,21 @@ tests =
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
         ]
-    , testGroup
-        "instances"
-        [ lawsToTestTree (eqLaws (Proxy :: Proxy (MapA Int)))
-        , lawsToTestTree (ordLaws (Proxy :: Proxy (MapA Int)))
-        , lawsToTestTree (showLaws (Proxy :: Proxy (MapA Int)))
-        , lawsToTestTree (showReadLaws (Proxy :: Proxy (MapA Int)))
-        , lawsToTestTree (semigroupLaws (Proxy :: Proxy (MapA Int)))
-        , lawsToTestTree (monoidLaws (Proxy :: Proxy (MapA Int)))
-        , lawsToTestTree (functorLaws (Proxy :: Proxy MapA))
-        , lawsToTestTree (foldableLaws (Proxy :: Proxy MapA))
-        , lawsToTestTree (isListLaws (Proxy :: Proxy (MapA Int)))
-        ]
+    ]
+
+instanceTests :: TestTree
+instanceTests =
+  testGroup
+    "instance laws"
+    [ lawsToTestTree (eqLaws (Proxy :: Proxy (MapA Int)))
+    , lawsToTestTree (ordLaws (Proxy :: Proxy (MapA Int)))
+    , lawsToTestTree (showLaws (Proxy :: Proxy (MapA Int)))
+    , lawsToTestTree (showReadLaws (Proxy :: Proxy (MapA Int)))
+    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (MapA Int)))
+    , lawsToTestTree (monoidLaws (Proxy :: Proxy (MapA Int)))
+    , lawsToTestTree (functorLaws (Proxy :: Proxy MapA))
+    , lawsToTestTree (foldableLaws (Proxy :: Proxy MapA))
+    , lawsToTestTree (isListLaws (Proxy :: Proxy (MapA Int)))
     ]
 
 toSortedList :: Word64Map a -> [(K, a)]

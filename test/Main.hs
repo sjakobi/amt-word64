@@ -62,7 +62,7 @@ import Data.Maybe (listToMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
 import GHC.Exts qualified as Exts
-import Test.QuickCheck.Classes
+import Test.QuickCheck.Classes.Base
   ( Laws (Laws)
   , eqLaws
   , foldableLaws

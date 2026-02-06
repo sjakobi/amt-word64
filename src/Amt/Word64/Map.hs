@@ -67,13 +67,18 @@ import Data.Data
   , mkDataType
   )
 import Data.Foldable qualified as Foldable
-import Data.Functor.Classes (Eq1 (liftEq), Ord1 (liftCompare))
+import Data.Functor.Classes
+  ( Eq1 (liftEq)
+  , Ord1 (liftCompare)
+  , Show1 (liftShowsPrec)
+  )
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
 import Text.Read (Lexeme (Ident), lexP, parens, readListPrecDefault, readPrec)
+import Text.Show (showListWith)
 import Prelude hiding (filter, lookup, map, null)
 
 data InvariantViolation
@@ -160,6 +165,14 @@ instance Ord1 Word64Map where
           EQ -> go xs ys
           res -> res
         res -> res
+
+instance Show1 Word64Map where
+  liftShowsPrec sp _ _ m =
+    showString "fromList "
+      . showListWith showPair (toList m)
+   where
+    showPair (k, v) =
+      showParen True (shows k . showString ", " . sp 0 v)
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

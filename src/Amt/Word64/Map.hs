@@ -398,7 +398,7 @@ insertAtShift s !k v m = case m of
 
 -- | Unsafe insert using in-place updates. Expects a non-empty root.
 insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> ST s (Word64Map a)
-insertAtShiftUnsafe s k v m = case m of
+insertAtShiftUnsafe s !k v m = case m of
   Leaf k' v'
     | k == k' -> pure (Leaf k v)
     | otherwise -> pure (two s k v k' v')

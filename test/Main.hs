@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import Amt.Word64.Map.Internal qualified as Internal
 import Amt.Word64.Map.Lazy
   ( Word64Map
   , adjust
@@ -51,6 +52,8 @@ import Amt.Word64.Map.Lazy
   , updateWithKey
   , valid
   )
+import Control.DeepSeq (NFData1 (liftRnf))
+import Control.Exception (evaluate)
 import Data.Bits qualified as Bits
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
 import Data.Functor.Classes
@@ -62,8 +65,10 @@ import Data.Functor.Classes
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
+import Data.Primitive.SmallArray (indexSmallArray, sizeofSmallArray)
 import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
+import NoThunks.Class (NoThunks (showTypeOf, wNoThunks), noThunks)
 import Test.QuickCheck.Classes.Base
   ( Laws (Laws)
   , eqLaws
@@ -101,6 +106,56 @@ fromWord64 = K
 
 fromKList :: [(K, a)] -> Word64Map a
 fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
+
+newtype Spine a = Spine (Word64Map a)
+
+instance NoThunks (Spine a) where
+  showTypeOf _ = "Word64MapSpine"
+  wNoThunks ctxt (Spine m) = case m of
+    Internal.Leaf _ _ -> pure Nothing
+    Internal.Branch _ ary -> go 0
+     where
+      go i
+        | i >= sizeofSmallArray ary = pure Nothing
+        | otherwise = do
+            let child = indexSmallArray ary i
+            res <- noThunks (("child[" ++ show i ++ "]") : ctxt) (Spine child)
+            case res of
+              Nothing -> go (i + 1)
+              Just _ -> pure res
+
+checkSpine :: String -> Word64Map a -> Property
+checkSpine name m =
+  ioProperty $ do
+    m' <- evaluate m
+    res <- noThunks ["Word64Map", name] (Spine m')
+    pure $ case res of
+      Nothing -> property True
+      Just info -> counterexample (show info) False
+
+checkValuesLazy :: String -> Word64Map a -> Property
+checkValuesLazy _name m =
+  ioProperty $ do
+    _ <- evaluate (liftRnf (const ()) m)
+    pure (property True)
+
+lazySpine :: String -> Word64Map a -> Property
+lazySpine name = once . checkValuesLazy ("values." ++ name)
+
+lazySpinePair :: String -> (Word64Map a, Word64Map a) -> Property
+lazySpinePair name (leftMap, rightMap) =
+  once $
+    checkValuesLazy ("values." ++ name ++ ".left") leftMap
+      .&&. checkValuesLazy ("values." ++ name ++ ".right") rightMap
+
+bombInt :: Int
+bombInt = error "Word64Map value forced"
+
+leaf1 :: Word64Map Int
+leaf1 = Internal.Leaf 1 bombInt
+
+leaf2 :: Word64Map Int
+leaf2 = Internal.Leaf 2 bombInt
 
 main :: IO ()
 main =
@@ -339,6 +394,7 @@ tests =
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
         ]
+    , strictnessTests
     ]
 
 instanceTests :: TestTree
@@ -1049,3 +1105,371 @@ prop_mergeWithKey_differenceWithKey_model e1 e2 =
       m2 = fromKList e2
    in mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2
         === differenceWith f m1 m2
+
+strictnessTests :: TestTree
+strictnessTests =
+  testGroup
+    "strictness"
+    [ testGroup
+        "spine"
+        [ testProperty "empty" prop_spine_empty
+        , testProperty "singleton" prop_spine_singleton
+        , testProperty "fromList" prop_spine_fromList
+        , testProperty "insert" prop_spine_insert
+        , testProperty "insertWith" prop_spine_insertWith
+        , testProperty "insertWithKey" prop_spine_insertWithKey
+        , testProperty "delete" prop_spine_delete
+        , testProperty "adjust" prop_spine_adjust
+        , testProperty "adjustWithKey" prop_spine_adjustWithKey
+        , testProperty "update" prop_spine_update
+        , testProperty "updateWithKey" prop_spine_updateWithKey
+        , testProperty "alter" prop_spine_alter
+        , testProperty "union" prop_spine_union
+        , testProperty "unionWith" prop_spine_unionWith
+        , testProperty "unionWithKey" prop_spine_unionWithKey
+        , testProperty "difference" prop_spine_difference
+        , testProperty "differenceWith" prop_spine_differenceWith
+        , testProperty "intersection" prop_spine_intersection
+        , testProperty "intersectionWith" prop_spine_intersectionWith
+        , testProperty "intersectionWithKey" prop_spine_intersectionWithKey
+        , testProperty "map" prop_spine_map
+        , testProperty "mapWithKey" prop_spine_mapWithKey
+        , testProperty "mapMaybe" prop_spine_mapMaybe
+        , testProperty "mapMaybeWithKey" prop_spine_mapMaybeWithKey
+        , testProperty "mapEither" prop_spine_mapEither
+        , testProperty "mapEitherWithKey" prop_spine_mapEitherWithKey
+        , testProperty "filter" prop_spine_filter
+        , testProperty "filterWithKey" prop_spine_filterWithKey
+        , testProperty "partition" prop_spine_partition
+        , testProperty "partitionWithKey" prop_spine_partitionWithKey
+        , testProperty "mergeWithKey" prop_spine_mergeWithKey
+        ]
+    , testGroup
+        "values"
+        [ testProperty "empty" prop_values_empty
+        , testProperty "singleton" prop_values_singleton
+        , testProperty "fromList" prop_values_fromList
+        , testProperty "insert" prop_values_insert
+        , testProperty "insertWith" prop_values_insertWith
+        , testProperty "insertWithKey" prop_values_insertWithKey
+        , testProperty "delete" prop_values_delete
+        , testProperty "adjust" prop_values_adjust
+        , testProperty "adjustWithKey" prop_values_adjustWithKey
+        , testProperty "update" prop_values_update
+        , testProperty "updateWithKey" prop_values_updateWithKey
+        , testProperty "alter" prop_values_alter
+        , testProperty "union" prop_values_union
+        , testProperty "unionWith" prop_values_unionWith
+        , testProperty "unionWithKey" prop_values_unionWithKey
+        , testProperty "difference" prop_values_difference
+        , testProperty "differenceWith" prop_values_differenceWith
+        , testProperty "intersection" prop_values_intersection
+        , testProperty "intersectionWith" prop_values_intersectionWith
+        , testProperty "intersectionWithKey" prop_values_intersectionWithKey
+        , testProperty "map" prop_values_map
+        , testProperty "mapWithKey" prop_values_mapWithKey
+        , testProperty "mapMaybe" prop_values_mapMaybe
+        , testProperty "mapMaybeWithKey" prop_values_mapMaybeWithKey
+        , testProperty "mapEither" prop_values_mapEither
+        , testProperty "mapEitherWithKey" prop_values_mapEitherWithKey
+        , testProperty "filter" prop_values_filter
+        , testProperty "filterWithKey" prop_values_filterWithKey
+        , testProperty "partition" prop_values_partition
+        , testProperty "partitionWithKey" prop_values_partitionWithKey
+        , testProperty "mergeWithKey" prop_values_mergeWithKey
+        ]
+    ]
+
+prop_spine_empty :: Property
+prop_spine_empty = checkSpine "empty" (empty @Int)
+
+prop_spine_singleton :: K -> Int -> Property
+prop_spine_singleton k v = checkSpine "singleton" (singleton (toWord64 k) v)
+
+prop_spine_fromList :: [(K, Int)] -> Property
+prop_spine_fromList entries = checkSpine "fromList" (fromKList entries)
+
+prop_spine_insert :: [(K, Int)] -> K -> Int -> Property
+prop_spine_insert entries k v =
+  checkSpine "insert" (insert (toWord64 k) v (fromKList entries))
+
+prop_spine_insertWith :: [(K, Int)] -> K -> Int -> Property
+prop_spine_insertWith entries k v =
+  let f x y = x + y
+   in checkSpine "insertWith" (insertWith f (toWord64 k) v (fromKList entries))
+
+prop_spine_insertWithKey :: [(K, Int)] -> K -> Int -> Property
+prop_spine_insertWithKey entries k v =
+  let f k' new old = fromIntegral (toWord64 k') + new + old
+   in checkSpine
+        "insertWithKey"
+        ( insertWithKey
+            (\k' new old -> f (fromWord64 k') new old)
+            (toWord64 k)
+            v
+            (fromKList entries)
+        )
+
+prop_spine_delete :: [(K, Int)] -> K -> Property
+prop_spine_delete entries k =
+  checkSpine "delete" (delete (toWord64 k) (fromKList entries))
+
+prop_spine_adjust :: [(K, Int)] -> K -> Property
+prop_spine_adjust entries k =
+  checkSpine "adjust" (adjust (+ 1) (toWord64 k) (fromKList entries))
+
+prop_spine_adjustWithKey :: [(K, Int)] -> K -> Property
+prop_spine_adjustWithKey entries k =
+  let f k' x = fromIntegral (toWord64 k') + x
+   in checkSpine
+        "adjustWithKey"
+        (adjustWithKey (\k' x' -> f (fromWord64 k') x') (toWord64 k) (fromKList entries))
+
+prop_spine_update :: [(K, Int)] -> K -> Property
+prop_spine_update entries k =
+  let f x = if even x then Just (x + 1) else Nothing
+   in checkSpine "update" (update f (toWord64 k) (fromKList entries))
+
+prop_spine_updateWithKey :: [(K, Int)] -> K -> Property
+prop_spine_updateWithKey entries k =
+  let f k' x = if even (toWord64 k' + fromIntegral x) then Just (x + 1) else Nothing
+   in checkSpine
+        "updateWithKey"
+        (updateWithKey (\k' x' -> f (fromWord64 k') x') (toWord64 k) (fromKList entries))
+
+prop_spine_alter :: [(K, Int)] -> K -> Property
+prop_spine_alter entries k =
+  let f Nothing = Just 1
+      f (Just x) = if even x then Just (x + 1) else Nothing
+   in checkSpine "alter" (alter f (toWord64 k) (fromKList entries))
+
+prop_spine_union :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_union e1 e2 =
+  checkSpine "union" (union (fromKList e1) (fromKList e2))
+
+prop_spine_unionWith :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_unionWith e1 e2 =
+  let f x y = x + y
+   in checkSpine "unionWith" (unionWith f (fromKList e1) (fromKList e2))
+
+prop_spine_unionWithKey :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_unionWithKey e1 e2 =
+  let f k x y = fromIntegral (toWord64 k) + x + y
+   in checkSpine
+        "unionWithKey"
+        ( unionWithKey
+            (\k' x' y' -> f (fromWord64 k') x' y')
+            (fromKList e1)
+            (fromKList e2)
+        )
+
+prop_spine_difference :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_difference e1 e2 =
+  checkSpine "difference" (difference (fromKList e1) (fromKList e2))
+
+prop_spine_differenceWith :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_differenceWith e1 e2 =
+  let f x y = if even (x + y) then Just (x + y) else Nothing
+   in checkSpine "differenceWith" (differenceWith f (fromKList e1) (fromKList e2))
+
+prop_spine_intersection :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_intersection e1 e2 =
+  checkSpine "intersection" (intersection (fromKList e1) (fromKList e2))
+
+prop_spine_intersectionWith :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_intersectionWith e1 e2 =
+  let f x y = x + y
+   in checkSpine "intersectionWith" (intersectionWith f (fromKList e1) (fromKList e2))
+
+prop_spine_intersectionWithKey :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_intersectionWithKey e1 e2 =
+  let f k x y = fromIntegral (toWord64 k) + x + y
+   in checkSpine
+        "intersectionWithKey"
+        ( intersectionWithKey
+            (\k' x' y' -> f (fromWord64 k') x' y')
+            (fromKList e1)
+            (fromKList e2)
+        )
+
+prop_spine_map :: [(K, Int)] -> Property
+prop_spine_map entries =
+  checkSpine "map" (map (+ 1) (fromKList entries))
+
+prop_spine_mapWithKey :: [(K, Int)] -> Property
+prop_spine_mapWithKey entries =
+  let f k v = fromIntegral (toWord64 k) + v
+   in checkSpine
+        "mapWithKey"
+        (mapWithKey (\k' v' -> f (fromWord64 k') v') (fromKList entries))
+
+prop_spine_mapMaybe :: [(K, Int)] -> Property
+prop_spine_mapMaybe entries =
+  let f x = if even x then Just (x `div` 2) else Nothing
+   in checkSpine "mapMaybe" (mapMaybe f (fromKList entries))
+
+prop_spine_mapMaybeWithKey :: [(K, Int)] -> Property
+prop_spine_mapMaybeWithKey entries =
+  let f k v = if even (toWord64 k + fromIntegral v) then Just (v + 1) else Nothing
+   in checkSpine
+        "mapMaybeWithKey"
+        (mapMaybeWithKey (\k' v' -> f (fromWord64 k') v') (fromKList entries))
+
+prop_spine_mapEither :: [(K, Int)] -> Property
+prop_spine_mapEither entries =
+  let f x = if even x then Left (x `div` 2) else Right (x * 2)
+      (l, r) = mapEither f (fromKList entries)
+   in checkSpine "mapEither.left" l
+        .&&. checkSpine "mapEither.right" r
+
+prop_spine_mapEitherWithKey :: [(K, Int)] -> Property
+prop_spine_mapEitherWithKey entries =
+  let f k v = if even (toWord64 k + fromIntegral v) then Left (v + 1) else Right (v + 2)
+      (l, r) = mapEitherWithKey (\k' v' -> f (fromWord64 k') v') (fromKList entries)
+   in checkSpine "mapEitherWithKey.left" l
+        .&&. checkSpine "mapEitherWithKey.right" r
+
+prop_spine_filter :: [(K, Int)] -> Property
+prop_spine_filter entries =
+  checkSpine "filter" (filter even (fromKList entries))
+
+prop_spine_filterWithKey :: [(K, Int)] -> Property
+prop_spine_filterWithKey entries =
+  let f k v = even (toWord64 k + fromIntegral v)
+   in checkSpine
+        "filterWithKey"
+        (filterWithKey (\k' v' -> f (fromWord64 k') v') (fromKList entries))
+
+prop_spine_partition :: [(K, Int)] -> Property
+prop_spine_partition entries =
+  let (l, r) = partition even (fromKList entries)
+   in checkSpine "partition.left" l
+        .&&. checkSpine "partition.right" r
+
+prop_spine_partitionWithKey :: [(K, Int)] -> Property
+prop_spine_partitionWithKey entries =
+  let f k v = even (toWord64 k + fromIntegral v)
+      (l, r) = partitionWithKey (\k' v' -> f (fromWord64 k') v') (fromKList entries)
+   in checkSpine "partitionWithKey.left" l
+        .&&. checkSpine "partitionWithKey.right" r
+
+prop_spine_mergeWithKey :: [(K, Int)] -> [(K, Int)] -> Property
+prop_spine_mergeWithKey e1 e2 =
+  let f _ x _ = Just x
+      m1 = fromKList e1
+      m2 = fromKList e2
+   in checkSpine "mergeWithKey" (mergeWithKey f id id m1 m2)
+
+prop_values_empty :: Property
+prop_values_empty = lazySpine "empty" (empty @Int)
+
+prop_values_singleton :: Property
+prop_values_singleton = lazySpine "singleton" (singleton 1 bombInt)
+
+prop_values_fromList :: Property
+prop_values_fromList =
+  lazySpine "fromList" (fromList [(1, bombInt), (2, bombInt)])
+
+prop_values_insert :: Property
+prop_values_insert = lazySpine "insert" (insert 1 bombInt leaf2)
+
+prop_values_insertWith :: Property
+prop_values_insertWith =
+  lazySpine "insertWith" (insertWith (\_ _ -> bombInt) 1 bombInt leaf1)
+
+prop_values_insertWithKey :: Property
+prop_values_insertWithKey =
+  lazySpine "insertWithKey" (insertWithKey (\_ _ _ -> bombInt) 1 bombInt leaf1)
+
+prop_values_delete :: Property
+prop_values_delete = lazySpine "delete" (delete 1 leaf1)
+
+prop_values_adjust :: Property
+prop_values_adjust = lazySpine "adjust" (adjust (const bombInt) 1 leaf1)
+
+prop_values_adjustWithKey :: Property
+prop_values_adjustWithKey =
+  lazySpine "adjustWithKey" (adjustWithKey (\_ _ -> bombInt) 1 leaf1)
+
+prop_values_update :: Property
+prop_values_update = lazySpine "update" (update (const (Just bombInt)) 1 leaf1)
+
+prop_values_updateWithKey :: Property
+prop_values_updateWithKey =
+  lazySpine "updateWithKey" (updateWithKey (\_ _ -> Just bombInt) 1 leaf1)
+
+prop_values_alter :: Property
+prop_values_alter = lazySpine "alter" (alter (const (Just bombInt)) 1 leaf1)
+
+prop_values_union :: Property
+prop_values_union = lazySpine "union" (union leaf1 leaf2)
+
+prop_values_unionWith :: Property
+prop_values_unionWith =
+  lazySpine "unionWith" (unionWith (\_ _ -> bombInt) leaf1 leaf1)
+
+prop_values_unionWithKey :: Property
+prop_values_unionWithKey =
+  lazySpine "unionWithKey" (unionWithKey (\_ _ _ -> bombInt) leaf1 leaf1)
+
+prop_values_difference :: Property
+prop_values_difference = lazySpine "difference" (difference leaf1 leaf2)
+
+prop_values_differenceWith :: Property
+prop_values_differenceWith =
+  lazySpine "differenceWith" (differenceWith (\_ _ -> Just bombInt) leaf1 leaf1)
+
+prop_values_intersection :: Property
+prop_values_intersection = lazySpine "intersection" (intersection leaf1 leaf1)
+
+prop_values_intersectionWith :: Property
+prop_values_intersectionWith =
+  lazySpine "intersectionWith" (intersectionWith (\_ _ -> bombInt) leaf1 leaf1)
+
+prop_values_intersectionWithKey :: Property
+prop_values_intersectionWithKey =
+  lazySpine
+    "intersectionWithKey"
+    (intersectionWithKey (\_ _ _ -> bombInt) leaf1 leaf1)
+
+prop_values_map :: Property
+prop_values_map = lazySpine "map" (map (const bombInt) leaf1)
+
+prop_values_mapWithKey :: Property
+prop_values_mapWithKey =
+  lazySpine "mapWithKey" (mapWithKey (\_ _ -> bombInt) leaf1)
+
+prop_values_mapMaybe :: Property
+prop_values_mapMaybe = lazySpine "mapMaybe" (mapMaybe (const (Just bombInt)) leaf1)
+
+prop_values_mapMaybeWithKey :: Property
+prop_values_mapMaybeWithKey =
+  lazySpine "mapMaybeWithKey" (mapMaybeWithKey (\_ _ -> Just bombInt) leaf1)
+
+prop_values_mapEither :: Property
+prop_values_mapEither =
+  lazySpinePair "mapEither" (mapEither (const (Left bombInt)) leaf1)
+
+prop_values_mapEitherWithKey :: Property
+prop_values_mapEitherWithKey =
+  lazySpinePair "mapEitherWithKey" (mapEitherWithKey (\_ _ -> Left bombInt) leaf1)
+
+prop_values_filter :: Property
+prop_values_filter = lazySpine "filter" (filter (const True) leaf1)
+
+prop_values_filterWithKey :: Property
+prop_values_filterWithKey =
+  lazySpine "filterWithKey" (filterWithKey (\_ _ -> True) leaf1)
+
+prop_values_partition :: Property
+prop_values_partition = lazySpinePair "partition" (partition (const True) leaf1)
+
+prop_values_partitionWithKey :: Property
+prop_values_partitionWithKey =
+  lazySpinePair "partitionWithKey" (partitionWithKey (\_ _ -> True) leaf1)
+
+prop_values_mergeWithKey :: Property
+prop_values_mergeWithKey =
+  lazySpine
+    "mergeWithKey"
+    (mergeWithKey (\_ _ _ -> Just bombInt) id id leaf1 leaf1)

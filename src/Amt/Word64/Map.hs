@@ -131,6 +131,10 @@ instance Traversable Word64Map where
 instance Semigroup (Word64Map a) where
   (<>) = union
 
+instance Monoid (Word64Map a) where
+  mempty = empty
+  mappend = union
+
 newtype Bitmap = BM Word64
 
 {- | Bitmap query result: bit mask for the current slot, compact array index,

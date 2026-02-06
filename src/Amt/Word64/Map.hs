@@ -110,6 +110,9 @@ instance Functor Word64Map where
 instance Show a => Show (Word64Map a) where
   show m = "fromList " ++ show (toList m)
 
+instance Eq a => Eq (Word64Map a) where
+  m1 == m2 = toList m1 == toList m2
+
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v
   foldMap f (Branch _ ary) = Foldable.foldMap (foldMap f) ary

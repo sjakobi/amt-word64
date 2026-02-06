@@ -314,7 +314,7 @@ toSortedList :: Word64Map a -> [(K, a)]
 toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
 
 eqMap :: (Eq a, Show a) => Word64Map a -> Word64Map a -> Property
-eqMap m1 m2 = toList m1 === toList m2
+eqMap m1 m2 = m1 === m2
 
 checkValid :: Word64Map a -> Property
 checkValid m = case valid m of

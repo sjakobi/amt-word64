@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
@@ -54,8 +55,10 @@ import Amt.Word64.Map
   , valid
   )
 import Data.Bits qualified as Bits
+import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
 import GHC.Exts qualified as Exts
@@ -340,6 +343,11 @@ tests =
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
         ]
+    , testGroup
+        "Data"
+        [ testProperty "gmapQi roundtrip" prop_data_gmapQi
+        , testProperty "toConstr is fromList" prop_data_toConstr
+        ]
     ]
 
 instanceTests :: TestTree
@@ -371,6 +379,17 @@ checkValid :: Word64Map a -> Property
 checkValid m = case valid m of
   Nothing -> property True
   Just err -> counterexample (show err) False
+
+prop_data_gmapQi :: [(K, Int)] -> Property
+prop_data_gmapQi xs =
+  let m = fromKList xs
+   in property $ gmapQi 0 cast m == Just (toList m)
+
+prop_data_toConstr :: [(K, Int)] -> Property
+prop_data_toConstr xs =
+  let m = fromKList xs
+      dt = dataTypeOf m
+   in property $ Just (toConstr m) == listToMaybe (dataTypeConstrs dt)
 
 prop_singleton_model :: K -> Int -> Property
 prop_singleton_model k v =

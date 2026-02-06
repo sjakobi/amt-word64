@@ -664,28 +664,28 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2
   go _ m1 (Branch (BM 0) _) = g1 m1
-  go !shift (Leaf k1 v1) (Leaf k2 v2)
+  go shift (Leaf k1 v1) (Leaf k2 v2)
     | k1 == k2 =
         case f k1 v1 v2 of
           Nothing -> empty
           Just v' -> Leaf k1 v'
     | otherwise =
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
-  go !shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
+  go shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
     case index shift k1 (BM bm2) of
       Index _ _ NoMatch ->
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 m2)
       Index _ i Match ->
-        let (newBm, newAry) = runST (mergeLeafBranchLeft shift k1 v1 bm2 ary2 i)
+        let (newBm, newAry) = runST (mergeLeafVsBranch shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
-  go !shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
+  go shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
     case index shift k2 (BM bm1) of
       Index _ _ NoMatch ->
         unionAtShiftHandleEmpty shift (g1 m1) (g2 (Leaf k2 v2))
       Index _ i Match ->
-        let (newBm, newAry) = runST (mergeLeafBranchRight shift k2 v2 bm1 ary1 i)
+        let (newBm, newAry) = runST (mergeBranchVsLeaf shift k2 v2 bm1 ary1 i)
          in collapse (BM newBm) newAry
-  go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let (newBm, newAry) = runST (mergeWithKeyBranches shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
@@ -751,7 +751,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                         (Nothing, Nothing) -> error "mergeWithKey: impossible"
         step unionBm 0 0 0 0
 
-  mergeLeafBranchLeft ::
+  mergeLeafVsBranch ::
     forall s.
     Shift ->
     Word64 ->
@@ -760,7 +760,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
     SmallArray (Word64Map b) ->
     Int ->
     ST s (Word64, SmallArray (Word64Map c))
-  mergeLeafBranchLeft shift k1 v1 bm2 ary2 iMatch = do
+  mergeLeafVsBranch shift k1 v1 bm2 ary2 iMatch = do
     let n = sizeofSmallArray ary2
     mary <- newSmallArray n empty
     let step !w !i !j !newBm
@@ -786,7 +786,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                       step w' (i + 1) (j + 1) (newBm .|. bit)
     step bm2 0 0 0
 
-  mergeLeafBranchRight ::
+  mergeBranchVsLeaf ::
     forall s.
     Shift ->
     Word64 ->
@@ -795,7 +795,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
     SmallArray (Word64Map a) ->
     Int ->
     ST s (Word64, SmallArray (Word64Map c))
-  mergeLeafBranchRight shift k2 v2 bm1 ary1 iMatch = do
+  mergeBranchVsLeaf shift k2 v2 bm1 ary1 iMatch = do
     let n = sizeofSmallArray ary1
     mary <- newSmallArray n empty
     let step !w !i !j !newBm

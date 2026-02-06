@@ -66,7 +66,7 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 - [x] **`NFData`**: Implemented.
 - [x] **`Data`**: Implemented.
 - [x] **`IsList`**: Implemented.
-- [ ] **`Eq1`**: Not yet implemented.
+- [x] **`Eq1`**: Implemented.
 - [ ] **`Ord1`**: Not yet implemented.
 - [ ] **`Read1`**: Not yet implemented.
 - [ ] **`Show1`**: Not yet implemented.

@@ -67,6 +67,7 @@ import Data.Data
   , mkDataType
   )
 import Data.Foldable qualified as Foldable
+import Data.Functor.Classes (Eq1 (liftEq))
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
@@ -138,6 +139,14 @@ instance Exts.IsList (Word64Map a) where
   type Item (Word64Map a) = (Word64, a)
   fromList = Amt.Word64.Map.fromList
   toList = Amt.Word64.Map.toList
+
+instance Eq1 Word64Map where
+  liftEq f m1 m2 = go (toList m1) (toList m2)
+   where
+    go [] [] = True
+    go ((k1, v1) : xs) ((k2, v2) : ys) =
+      k1 == k2 && f v1 v2 && go xs ys
+    go _ _ = False
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

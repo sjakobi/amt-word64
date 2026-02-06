@@ -316,6 +316,9 @@ insert k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
+{- | Unsafe insert that mutates arrays in-place under the hood.
+  Expects the input map to be non-empty except at the root.
+-}
 insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
 insertUnsafe k v m = case m of
   Branch (BM 0) _ -> singleton k v

@@ -29,9 +29,12 @@ This document provides essential context and guidelines for agents working on th
 
 Use standard `cabal` commands for development:
 
-- **Build**: `cabal build` (use `--enable-tests` to include test targets).
-- **Test**: `cabal run tests -- --hide-successes`.
-- **Clean**: `cabal clean`.
+Always run cabal with a randomized temp log file via `CABAL_LOG`. Example:
+`CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal build`
+
+- **Build**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal build` (use `--enable-tests` to include test targets).
+- **Test**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal run tests -- --hide-successes`.
+- **Clean**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal clean`.
 
 ### Development Workflow
 
@@ -152,3 +155,10 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 ### Performance Tips
 - **Boxing**: Check if arguments like `Shift` (Int) are being re-boxed in recursive calls (e.g., `(I# (+# i# 6#))`). Use bang patterns `!s` to encourage unboxing.
 - **Inlining**: Ensure small helper functions are marked `INLINE` or `INLINABLE`.
+
+## Recent Learnings / Helpers
+
+- Use `lowBit` (`w .&. negate w`) and `clearLowBit` (`w .&. (w - 1)`) for bitmap scans; both are documented to return 0 on input 0. Every bit-walk (union/diff/intersect/filter/partition/etc.) should loop by clearing the low bit instead of recomputing `popCount`.
+- Branch merging helper is `unionBranches`; analogous helpers are `differenceBranches` and `intersectBranch`. Prefer single-pass bitmap walks with mutable arrays and shrink before freeze.
+- `filterWithKey` now has a direct ST-based builder to avoid `Maybe` allocation; follow that pattern instead of piping through `mapMaybeWithKey` when you need a no-allocation filter.
+- For PR replies, `gh pr comment <number> --body "<text>"` is the quick path; line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.

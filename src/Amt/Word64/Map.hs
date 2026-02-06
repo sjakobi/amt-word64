@@ -54,6 +54,7 @@ module Amt.Word64.Map
   , InvariantViolation (..)
   ) where
 
+import Control.DeepSeq (NFData (rnf))
 import Control.Monad.ST (ST, runST)
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
@@ -134,6 +135,10 @@ instance Semigroup (Word64Map a) where
 instance Monoid (Word64Map a) where
   mempty = empty
   mappend = union
+
+instance NFData a => NFData (Word64Map a) where
+  rnf (Leaf _ v) = rnf v
+  rnf (Branch _ ary) = Foldable.foldr (\m acc -> rnf m `seq` acc) () ary
 
 newtype Bitmap = BM Word64
 

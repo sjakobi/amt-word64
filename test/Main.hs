@@ -2,7 +2,7 @@
 
 module Main (main) where
 
-import Amt.Word64.Map
+import Amt.Word64.Map.Lazy
   ( Word64Map
   , adjust
   , adjustWithKey

@@ -468,6 +468,9 @@ union m1 m2 = unionAtShift 0# m1 m2
 
 {- | Merge two branch arrays by walking the union bitmap once.
 
+Assumes both bitmaps are non-zero (i.e. neither branch is empty), so the
+union bitmap is also non-zero.
+
 The @both@ function is used when a bit is present in both branches.
 -}
 unionBranches ::
@@ -480,37 +483,34 @@ unionBranches ::
 unionBranches bm1 ary1 bm2 ary2 both =
   let newBm = bm1 .|. bm2
       n = popCount newBm
-   in if n == 0
-        then (0, mempty)
-        else
-          ( newBm
-          , runST $ do
-              mary <- newSmallArray n empty
-              let step !w !i1 !i2 !j
-                    | w == 0 = unsafeFreezeSmallArray mary
-                    | otherwise =
-                        let bit = lowBit w
-                            has1 = bm1 .&. bit /= 0
-                            has2 = bm2 .&. bit /= 0
-                            (child, i1', i2') = case (has1, has2) of
-                              (True, True) ->
-                                ( both
-                                    (indexSmallArray ary1 i1)
-                                    (indexSmallArray ary2 i2)
-                                , i1 + 1
-                                , i2 + 1
-                                )
-                              (True, False) ->
-                                (indexSmallArray ary1 i1, i1 + 1, i2)
-                              (False, True) ->
-                                (indexSmallArray ary2 i2, i1, i2 + 1)
-                              (False, False) -> error "unionBranches: impossible"
-                            w' = clearLowBit w
-                         in do
-                              writeSmallArray mary j child
-                              step w' i1' i2' (j + 1)
-              step newBm 0 0 0
-          )
+   in ( newBm
+      , runST $ do
+          mary <- newSmallArray n empty
+          let step !w !i1 !i2 !j
+                | w == 0 = unsafeFreezeSmallArray mary
+                | otherwise =
+                    let bit = lowBit w
+                        has1 = bm1 .&. bit /= 0
+                        has2 = bm2 .&. bit /= 0
+                        (child, i1', i2') = case (has1, has2) of
+                          (True, True) ->
+                            ( both
+                                (indexSmallArray ary1 i1)
+                                (indexSmallArray ary2 i2)
+                            , i1 + 1
+                            , i2 + 1
+                            )
+                          (True, False) ->
+                            (indexSmallArray ary1 i1, i1 + 1, i2)
+                          (False, True) ->
+                            (indexSmallArray ary2 i2, i1, i2 + 1)
+                          (False, False) -> error "unionBranches: impossible"
+                        w' = clearLowBit w
+                     in do
+                          writeSmallArray mary j child
+                          step w' i1' i2' (j + 1)
+          step newBm 0 0 0
+      )
 
 unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShift !shift m1 m2 = case (m1, m2) of
@@ -636,17 +636,8 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
             Nothing -> g1 rest
             Just v' -> insertAtShift shift k2 v' (g1 rest)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let (newBm, newAry) = mergeBranch shift bm1 ary1 bm2 ary2
+    let (newBm, newAry) = runST (goArray shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
-
-  mergeBranch ::
-    Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
-    (Word64, SmallArray (Word64Map c))
-  mergeBranch shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
 
   goArray ::
     forall s.
@@ -667,9 +658,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
               if j == 0
                 then pure (0, mempty)
                 else do
-                  if j < n
-                    then shrinkSmallMutableArray mary j
-                    else pure ()
+                  shrinkSmallMutableArray mary j
                   newAry <- unsafeFreezeSmallArray mary
                   pure (bmAcc, newAry)
             step !w !i1 !i2 !j !newBm
@@ -767,9 +756,7 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
               if j == 0
                 then pure (0, mempty)
                 else do
-                  if j < n
-                    then shrinkSmallMutableArray mary j
-                    else pure ()
+                  shrinkSmallMutableArray mary j
                   newAry <- unsafeFreezeSmallArray mary
                   pure (bmAcc, newAry)
             step !w !i1 !i2 !j !newBm
@@ -824,17 +811,8 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
     Nothing -> empty
     Just v1 -> Leaf k2 (f k2 v1 v2)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let (newBm, newAry) = intersectBranch shift bm1 ary1 bm2 ary2
+    let (newBm, newAry) = runST (goArray shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
-
-  intersectBranch ::
-    Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
-    (Word64, SmallArray (Word64Map c))
-  intersectBranch shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
 
   goArray ::
     forall s.
@@ -856,9 +834,7 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
               if j == 0
                 then pure (0, mempty)
                 else do
-                  if j < n
-                    then shrinkSmallMutableArray mary j
-                    else pure ()
+                  shrinkSmallMutableArray mary j
                   newAry <- unsafeFreezeSmallArray mary
                   pure (bmAcc, newAry)
             step !w !i1 !i2 !j !newBm
@@ -897,12 +873,8 @@ filterWithKey f = go
   go (Branch (BM bm) ary)
     | bm == 0 = empty
     | otherwise =
-        let (newBm, newAry) = filterBranch bm ary
+        let (newBm, newAry) = runST (goArray bm ary)
          in collapse (BM newBm) newAry
-
-  filterBranch ::
-    Word64 -> SmallArray (Word64Map a) -> (Word64, SmallArray (Word64Map a))
-  filterBranch bm ary = runST (goArray bm ary)
 
   goArray ::
     forall s.
@@ -915,9 +887,7 @@ filterWithKey f = go
               if j == 0
                 then pure (0, mempty)
                 else do
-                  if j < n
-                    then shrinkSmallMutableArray mary j
-                    else pure ()
+                  shrinkSmallMutableArray mary j
                   newAry <- unsafeFreezeSmallArray mary
                   pure (newBm, newAry)
           | otherwise =
@@ -973,9 +943,7 @@ partitionWithKey f m = go m
           if j == 0
             then pure (0, mempty)
             else do
-              if j < n
-                then shrinkSmallMutableArray mary j
-                else pure ()
+              shrinkSmallMutableArray mary j
               newAry <- unsafeFreezeSmallArray mary
               pure (bmAcc, newAry)
         step !w !i !jl !jr !lBm !rBm
@@ -1036,9 +1004,7 @@ mapMaybeWithKey f m = go m
               if j == 0
                 then pure (0, mempty)
                 else do
-                  if j < n
-                    then shrinkSmallMutableArray mary j
-                    else pure ()
+                  shrinkSmallMutableArray mary j
                   newAry <- unsafeFreezeSmallArray mary
                   pure (newBm, newAry)
           | otherwise =
@@ -1098,9 +1064,7 @@ mapEitherWithKey f m = go m
           if j == 0
             then pure (0, mempty)
             else do
-              if j < n
-                then shrinkSmallMutableArray mary j
-                else pure ()
+              shrinkSmallMutableArray mary j
               newAry <- unsafeFreezeSmallArray mary
               pure (bmAcc, newAry)
         step !w !i !jl !jr !lBm !rBm

@@ -73,14 +73,15 @@ import Data.Functor.Classes
   , Ord1 (liftCompare)
   , Read1 (liftReadPrec)
   , Show1 (liftShowsPrec)
+  , showsUnaryWith
   )
+import Data.Functor.Classes qualified as FunctorClasses
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
-import Text.Read (Lexeme (Ident, Punc), ReadPrec, lexP, parens, readPrec, (+++))
-import Text.Show (showListWith)
+import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
 import Prelude hiding (filter, lookup, map, null)
 
 data InvariantViolation
@@ -147,74 +148,30 @@ instance Exts.IsList (Word64Map a) where
   toList = Amt.Word64.Map.toList
 
 instance Eq1 Word64Map where
-  liftEq f m1 m2 = go (toList m1) (toList m2)
-   where
-    go [] [] = True
-    go ((k1, v1) : xs) ((k2, v2) : ys) =
-      k1 == k2 && f v1 v2 && go xs ys
-    go _ _ = False
+  liftEq f m1 m2 =
+    FunctorClasses.liftEq (FunctorClasses.liftEq f) (toList m1) (toList m2)
 
 instance Ord1 Word64Map where
-  liftCompare f m1 m2 = go (toList m1) (toList m2)
-   where
-    go [] [] = EQ
-    go [] (_ : _) = LT
-    go (_ : _) [] = GT
-    go ((k1, v1) : xs) ((k2, v2) : ys) =
-      case compare k1 k2 of
-        EQ -> case f v1 v2 of
-          EQ -> go xs ys
-          res -> res
-        res -> res
+  liftCompare f m1 m2 =
+    FunctorClasses.liftCompare
+      (FunctorClasses.liftCompare f)
+      (toList m1)
+      (toList m2)
 
 instance Show1 Word64Map where
-  liftShowsPrec sp _ _ m =
-    showString "fromList "
-      . showListWith showPair (toList m)
-   where
-    showPair (k, v) =
-      showParen True (shows k . showChar ',' . sp 0 v)
+  liftShowsPrec sp sl d =
+    let showPair = FunctorClasses.liftShowsPrec sp sl
+        showPairs = FunctorClasses.liftShowsPrec showPair (FunctorClasses.liftShowList sp sl)
+     in showsUnaryWith showPairs "fromList" d . toList
 
 instance Read1 Word64Map where
-  liftReadPrec rp _ = parens $ do
+  liftReadPrec rp rlp = parens $ do
     Ident "fromList" <- lexP
-    xs <- readPrecListWith (readPrecPair rp)
+    let readPair = FunctorClasses.liftReadPrec rp rlp
+        readPairs =
+          FunctorClasses.liftReadPrec readPair (FunctorClasses.liftReadListPrec rp rlp)
+    xs <- readPairs
     pure (fromList xs)
-
-readPrecPair :: ReadPrec a -> ReadPrec (Word64, a)
-readPrecPair rp = parens $ do
-  Punc "(" <- lexP
-  k <- readPrec
-  Punc "," <- lexP
-  v <- rp
-  Punc ")" <- lexP
-  pure (k, v)
-
-readPrecListWith :: ReadPrec a -> ReadPrec [a]
-readPrecListWith rp = parens $ do
-  Punc "[" <- lexP
-  readListTail
- where
-  readListTail =
-    ( do
-        Punc "]" <- lexP
-        pure []
-    )
-      +++ ( do
-              x <- rp
-              readListRest x
-          )
-
-  readListRest x =
-    ( do
-        Punc "," <- lexP
-        xs <- readListTail
-        pure (x : xs)
-    )
-      +++ ( do
-              Punc "]" <- lexP
-              pure [x]
-          )
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

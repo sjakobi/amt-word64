@@ -339,18 +339,6 @@ tests =
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
         ]
-    , testGroup
-        "Data"
-        [ testProperty "gmapQi roundtrip" prop_data_gmapQi
-        , testProperty "toConstr is fromList" prop_data_toConstr
-        ]
-    , testGroup
-        "Eq1/Ord1/Show1/Read1"
-        [ testProperty "Eq1 liftEq matches Eq" prop_eq1_liftEq
-        , testProperty "Ord1 liftCompare matches Ord" prop_ord1_liftCompare
-        , testProperty "Show1 liftShowsPrec matches Show" prop_show1_matches_show
-        , testProperty "Read1 liftReadPrec roundtrip" prop_read1_roundtrip
-        ]
     ]
 
 instanceTests :: TestTree
@@ -367,6 +355,18 @@ instanceTests =
     , lawsToTestTree (foldableLaws (Proxy :: Proxy Word64Map))
     , lawsToTestTree (traversableLaws (Proxy :: Proxy Word64Map))
     , lawsToTestTree (isListLaws (Proxy :: Proxy (Word64Map Int)))
+    , testGroup
+        "Data"
+        [ testProperty "gmapQi roundtrip" prop_data_gmapQi
+        , testProperty "toConstr is fromList" prop_data_toConstr
+        ]
+    , testGroup
+        "Eq1/Ord1/Show1/Read1"
+        [ testProperty "Eq1 liftEq matches Eq" prop_eq1_liftEq
+        , testProperty "Ord1 liftCompare matches Ord" prop_ord1_liftCompare
+        , testProperty "Show1 liftShowsPrec matches Show" prop_show1_matches_show
+        , testProperty "Read1 liftReadPrec roundtrip" prop_read1_roundtrip
+        ]
     ]
 
 toSortedList :: Word64Map a -> [(K, a)]

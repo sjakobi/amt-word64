@@ -78,7 +78,7 @@ import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
-import Text.Read (Lexeme (Ident), lexP, parens, readListPrecDefault, readPrec)
+import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
 import Text.Show (showListWith)
 import Prelude hiding (filter, lookup, map, null)
 
@@ -139,7 +139,6 @@ instance Read a => Read (Word64Map a) where
     Ident "fromList" <- lexP
     xs <- readPrec
     pure (fromList xs)
-  readListPrec = readListPrecDefault
 
 instance Exts.IsList (Word64Map a) where
   type Item (Word64Map a) = (Word64, a)

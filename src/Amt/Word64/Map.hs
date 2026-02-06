@@ -432,7 +432,7 @@ insert !k v m = case m of
 
 -- | Unsafe insert that mutates arrays in-place under the hood.
 insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
-insertUnsafe k v m = case m of
+insertUnsafe !k v m = case m of
   Branch (BM 0) _ -> singleton k v
   _ -> runST (insertAtShiftUnsafe 0# k v m)
 

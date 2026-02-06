@@ -29,12 +29,12 @@ This document provides essential context and guidelines for agents working on th
 
 Use standard `cabal` commands for development:
 
-Always run cabal with a randomized temp log file via `CABAL_LOG`. Example:
-`CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal build`
+Always run cabal with `CABAL_DIR=/tmp/cabal` to avoid writes in `$HOME`.
+Example: `CABAL_DIR=/tmp/cabal cabal build`
 
-- **Build**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal build` (use `--enable-tests` to include test targets).
-- **Test**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal run tests -- --hide-successes`.
-- **Clean**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal clean`.
+- **Build**: `CABAL_DIR=/tmp/cabal cabal build` (use `--enable-tests` to include test targets).
+- **Test**: `CABAL_DIR=/tmp/cabal cabal run tests -- --hide-successes`.
+- **Clean**: `CABAL_DIR=/tmp/cabal cabal clean`.
 
 ### Development Workflow
 
@@ -117,9 +117,9 @@ To optimize performance-critical functions like `insert`, it is helpful to exami
     ```bash
     cp cabal.project.local.dump-code cabal.project.local
     ```
-2.  **Build**: Run `cabal build` to generate the dumps.
+2.  **Build**: Run `CABAL_DIR=/tmp/cabal cabal build` to generate the dumps.
     ```bash
-    cabal build
+    CABAL_DIR=/tmp/cabal cabal build
     ```
 3.  **Locate Dumps**: Core dumps (ending in `.dump-simpl`) are placed in the build directory.
     ```bash

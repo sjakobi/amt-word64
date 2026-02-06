@@ -236,7 +236,7 @@ instance Semigroup (Word64Map a) where
 
 instance Monoid (Word64Map a) where
   mempty = empty
-  mappend = union
+  mappend = (<>)
 
 instance NFData a => NFData (Word64Map a) where
   rnf (Leaf _ v) = rnf v

@@ -70,6 +70,7 @@ import Data.Foldable qualified as Foldable
 import Data.Functor.Classes
   ( Eq1 (liftEq)
   , Ord1 (liftCompare)
+  , Read1 (liftReadPrec)
   , Show1 (liftShowsPrec)
   )
 import Data.Primitive.SmallArray
@@ -173,6 +174,12 @@ instance Show1 Word64Map where
    where
     showPair (k, v) =
       showParen True (shows k . showString ", " . sp 0 v)
+
+instance Read1 Word64Map where
+  liftReadPrec _ rlp = parens $ do
+    Ident "fromList" <- lexP
+    xs <- rlp
+    pure (fromList xs)
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

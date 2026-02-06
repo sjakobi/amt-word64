@@ -1,4 +1,6 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
 
@@ -54,7 +56,21 @@ import Amt.Word64.Map
 import Data.Bits qualified as Bits
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
+import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
+import GHC.Exts qualified as Exts
+import Test.QuickCheck.Classes
+  ( Laws (Laws)
+  , eqLaws
+  , foldableLaws
+  , functorLaws
+  , isListLaws
+  , monoidLaws
+  , ordLaws
+  , semigroupLaws
+  , showLaws
+  , showReadLaws
+  )
 import Test.Tasty
 import Test.Tasty.QuickCheck
 import Prelude hiding (filter, lookup, map, null)
@@ -62,9 +78,21 @@ import Prelude hiding (filter, lookup, map, null)
 newtype K = K Word64
   deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
 
+newtype MapA a = MapA {getMapA :: Word64Map a}
+  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid, Functor, Foldable)
+
+instance Exts.IsList (MapA a) where
+  type Item (MapA a) = (Word64, a)
+  fromList = MapA . fromList
+  toList = toList . getMapA
+
 instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
+
+instance Arbitrary a => Arbitrary (MapA a) where
+  arbitrary = MapA . fromKList <$> arbitrary
+  shrink (MapA m) = MapA . fromKList <$> shrink (toSortedList m)
 
 toWord64 :: K -> Word64
 toWord64 (K w) = w
@@ -308,10 +336,29 @@ tests =
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
         ]
+    , testGroup
+        "instances"
+        [ lawsToTestTree (eqLaws (Proxy :: Proxy (MapA Int)))
+        , lawsToTestTree (ordLaws (Proxy :: Proxy (MapA Int)))
+        , lawsToTestTree (showLaws (Proxy :: Proxy (MapA Int)))
+        , lawsToTestTree (showReadLaws (Proxy :: Proxy (MapA Int)))
+        , lawsToTestTree (semigroupLaws (Proxy :: Proxy (MapA Int)))
+        , lawsToTestTree (monoidLaws (Proxy :: Proxy (MapA Int)))
+        , lawsToTestTree (functorLaws (Proxy :: Proxy MapA))
+        , lawsToTestTree (foldableLaws (Proxy :: Proxy MapA))
+        , lawsToTestTree (isListLaws (Proxy :: Proxy (MapA Int)))
+        ]
     ]
 
 toSortedList :: Word64Map a -> [(K, a)]
 toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
+
+lawsToTestTree :: Laws -> TestTree
+lawsToTestTree (Laws name props) =
+  testGroup name $
+    [ testProperty propName prop
+    | (propName, prop) <- props
+    ]
 
 checkValid :: Word64Map a -> Property
 checkValid m = case valid m of

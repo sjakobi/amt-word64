@@ -71,6 +71,7 @@ library
     build-depends:
         base >=4.20 && <4.23,
         deepseq,
+        nothunks,
         primitive ^>=0.9.0.0
 
     -- Directories containing source files.
@@ -109,6 +110,7 @@ test-suite amt-word64-test
         base >=4.20 && <4.23,
         amt-word64,
         containers,
+        nothunks,
         QuickCheck,
         quickcheck-classes-base,
         tasty,

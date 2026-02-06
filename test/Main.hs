@@ -313,9 +313,6 @@ tests =
 toSortedList :: Word64Map a -> [(K, a)]
 toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
 
-eqMap :: (Eq a, Show a) => Word64Map a -> Word64Map a -> Property
-eqMap m1 m2 = m1 === m2
-
 checkValid :: Word64Map a -> Property
 checkValid m = case valid m of
   Nothing -> property True
@@ -935,9 +932,8 @@ prop_mergeWithKey_unionWithKey_model e1 e2 =
   let fW k x y = x + y + fromIntegral (k Bits..&. 7)
       m1 = fromKList e1
       m2 = fromKList e2
-   in eqMap
-        (mergeWithKey (\k x y -> Just (fW k x y)) id id m1 m2)
-        (unionWithKey (\k x y -> fW k x y) m1 m2)
+   in mergeWithKey (\k x y -> Just (fW k x y)) id id m1 m2
+        === unionWithKey (\k x y -> fW k x y) m1 m2
 
 prop_mergeWithKey_differenceWithKey_model ::
   [(K, Int)] -> [(K, Int)] -> Property
@@ -948,6 +944,5 @@ prop_mergeWithKey_differenceWithKey_model e1 e2 =
           else Nothing
       m1 = fromKList e1
       m2 = fromKList e2
-   in eqMap
-        (mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2)
-        (differenceWith f m1 m2)
+   in mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2
+        === differenceWith f m1 m2

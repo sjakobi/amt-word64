@@ -140,29 +140,27 @@ instance Show a => Show (Word64Map a) where
   show m = "fromList " ++ show (toList m)
 
 instance Eq a => Eq (Word64Map a) where
-  m1 == m2 = eqWord64Map m1 m2
+  m1 == m2 = eqMap m1 m2
 
-eqWord64Map :: Eq a => Word64Map a -> Word64Map a -> Bool
-eqWord64Map m1 m2 = go m1 m2
+eqMap :: Eq a => Word64Map a -> Word64Map a -> Bool
+eqMap m1 m2 = eqMap_ m1 m2
  where
-  go (Leaf k1 v1) (Leaf k2 v2) = k1 == k2 && v1 == v2
-  go (Branch bm1 ary1) (Branch bm2 ary2) =
+  eqMap_ (Leaf k1 v1) (Leaf k2 v2) = k1 == k2 && v1 == v2
+  eqMap_ (Branch bm1 ary1) (Branch bm2 ary2) =
     bm1 == bm2 && eqSmallArray ary1 ary2
-  go _ _ = False
+  eqMap_ _ _ = False
 
   eqSmallArray ary1 ary2
     | sameSmallArray ary1 ary2 = True
-    | n1 /= n2 = False
-    | otherwise = loop 0
+    | otherwise = loop (n - 1)
    where
-    n1 = sizeofSmallArray ary1
-    n2 = sizeofSmallArray ary2
+    n = sizeofSmallArray ary1
     loop i
-      | i >= n1 = True
+      | i < 0 = True
       | otherwise =
           let a1 = indexSmallArray ary1 i
               a2 = indexSmallArray ary2 i
-           in eqWord64Map a1 a2 && loop (i + 1)
+           in eqMap a1 a2 && loop (i - 1)
 
 sameSmallArray :: SmallArray a -> SmallArray a -> Bool
 sameSmallArray (SmallArray a1#) (SmallArray a2#) =

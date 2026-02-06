@@ -78,7 +78,16 @@ import Data.Functor.Classes
 import Data.Functor.Classes qualified as FunctorClasses
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
-import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
+import GHC.Exts
+  ( Int (I#)
+  , Int#
+  , Word64#
+  , eqWord64#
+  , isTrue#
+  , sameSmallArray#
+  , (+#)
+  , (>=#)
+  )
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
 import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
@@ -131,7 +140,34 @@ instance Show a => Show (Word64Map a) where
   show m = "fromList " ++ show (toList m)
 
 instance Eq a => Eq (Word64Map a) where
-  m1 == m2 = toList m1 == toList m2
+  m1 == m2 = eqWord64Map m1 m2
+
+eqWord64Map :: Eq a => Word64Map a -> Word64Map a -> Bool
+eqWord64Map m1 m2 = go m1 m2
+ where
+  go (Leaf k1 v1) (Leaf k2 v2) = k1 == k2 && v1 == v2
+  go (Branch bm1 ary1) (Branch bm2 ary2) =
+    bm1 == bm2 && eqSmallArray ary1 ary2
+  go _ _ = False
+
+  eqSmallArray ary1 ary2
+    | sameSmallArray ary1 ary2 = True
+    | n1 /= n2 = False
+    | otherwise = loop 0
+   where
+    n1 = sizeofSmallArray ary1
+    n2 = sizeofSmallArray ary2
+    loop i
+      | i >= n1 = True
+      | otherwise =
+          let a1 = indexSmallArray ary1 i
+              a2 = indexSmallArray ary2 i
+           in eqWord64Map a1 a2 && loop (i + 1)
+
+sameSmallArray :: SmallArray a -> SmallArray a -> Bool
+sameSmallArray (SmallArray a1#) (SmallArray a2#) =
+  isTrue# (sameSmallArray# a1# a2#)
+{-# INLINE sameSmallArray #-}
 
 instance Ord a => Ord (Word64Map a) where
   compare m1 m2 = compare (toList m1) (toList m2)
@@ -219,6 +255,7 @@ fromListConstr :: Constr
 fromListConstr = mkConstr word64MapDataType "fromList" [] Prefix
 
 newtype Bitmap = BM Word64
+  deriving (Eq)
 
 {- | Bitmap query result: bit mask for the current slot, compact array index,
 and whether the bit is present.

@@ -83,7 +83,8 @@ test-suite amt-word64-test
     -- Import common warning flags.
     import:           warnings
 
-    ghc-options:      -threaded -with-rtsopts=-N
+    -- The test suite defines orphan Arbitrary instances for law checks.
+    ghc-options:      -threaded -with-rtsopts=-N -Wno-orphans
 
     -- Base language which the package is written in.
     default-language: GHC2024

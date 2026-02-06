@@ -1,7 +1,4 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
 
@@ -67,7 +64,6 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
-import GHC.Exts qualified as Exts
 import Test.QuickCheck.Classes.Base
   ( Laws (Laws)
   , eqLaws
@@ -89,33 +85,13 @@ import Prelude hiding (filter, lookup, map, null)
 newtype K = K Word64
   deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
 
-newtype MapA a = MapA {getMapA :: Word64Map a}
-  deriving newtype
-    ( Eq
-    , Ord
-    , Show
-    , Read
-    , Semigroup
-    , Monoid
-    , Functor
-    , Foldable
-    )
-
-instance Traversable MapA where
-  traverse f (MapA m) = MapA <$> traverse f m
-
-instance Exts.IsList (MapA a) where
-  type Item (MapA a) = (Word64, a)
-  fromList = MapA . fromList
-  toList = toList . getMapA
-
 instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
 
-instance Arbitrary a => Arbitrary (MapA a) where
-  arbitrary = MapA . fromKList <$> arbitrary
-  shrink (MapA m) = MapA . fromKList <$> shrink (toSortedList m)
+instance Arbitrary a => Arbitrary (Word64Map a) where
+  arbitrary = fromKList <$> arbitrary
+  shrink m = fromKList <$> shrink (toSortedList m)
 
 toWord64 :: K -> Word64
 toWord64 (K w) = w
@@ -381,16 +357,16 @@ instanceTests :: TestTree
 instanceTests =
   testGroup
     "instance laws"
-    [ lawsToTestTree (eqLaws (Proxy :: Proxy (MapA Int)))
-    , lawsToTestTree (ordLaws (Proxy :: Proxy (MapA Int)))
-    , lawsToTestTree (showLaws (Proxy :: Proxy (MapA Int)))
-    , lawsToTestTree (showReadLaws (Proxy :: Proxy (MapA Int)))
-    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (MapA Int)))
-    , lawsToTestTree (monoidLaws (Proxy :: Proxy (MapA Int)))
-    , lawsToTestTree (functorLaws (Proxy :: Proxy MapA))
-    , lawsToTestTree (foldableLaws (Proxy :: Proxy MapA))
-    , lawsToTestTree (traversableLaws (Proxy :: Proxy MapA))
-    , lawsToTestTree (isListLaws (Proxy :: Proxy (MapA Int)))
+    [ lawsToTestTree (eqLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (ordLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (showLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (showReadLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (monoidLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (functorLaws (Proxy :: Proxy Word64Map))
+    , lawsToTestTree (foldableLaws (Proxy :: Proxy Word64Map))
+    , lawsToTestTree (traversableLaws (Proxy :: Proxy Word64Map))
+    , lawsToTestTree (isListLaws (Proxy :: Proxy (Word64Map Int)))
     ]
 
 toSortedList :: Word64Map a -> [(K, a)]

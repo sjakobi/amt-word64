@@ -490,7 +490,7 @@ mapWithKey f (Leaf k v) = Leaf k (f k v)
 mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
-union m1 m2 = unionAtShiftRoot 0# m1 m2
+union m1 m2 = unionAtShiftHandleEmpty 0# m1 m2
 
 {- | Merge two branch arrays by walking the union bitmap once.
 
@@ -538,14 +538,14 @@ unionBranches bm1 ary1 bm2 ary2 both =
           step newBm 0 0 0
       )
 
-unionAtShiftRoot :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
-unionAtShiftRoot !shift m1 m2 = case (m1, m2) of
+unionAtShiftHandleEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShiftHandleEmpty !shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
-  _ -> unionAtShift shift m1 m2
+  _ -> unionAtShiftNoEmpty shift m1 m2
 
-unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
-unionAtShift !shift m1 m2 = case (m1, m2) of
+unionAtShiftNoEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShiftNoEmpty !shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
@@ -555,7 +555,7 @@ unionAtShift !shift m1 m2 = case (m1, m2) of
             ary1
             bm2
             ary2
-            (unionAtShift (nextShift shift))
+            (unionAtShiftNoEmpty (nextShift shift))
      in collapse (BM newBm) newAry
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
@@ -667,18 +667,18 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
           Nothing -> empty
           Just v' -> Leaf k1 v'
     | otherwise =
-        unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
+        unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
   go !shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
     case index shift k1 (BM bm2) of
       Index _ _ NoMatch ->
-        unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 m2)
+        unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 m2)
       Index _ i Match ->
         let (newBm, newAry) = runST (mergeLeafBranchLeft shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
   go !shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
     case index shift k2 (BM bm1) of
       Index _ _ NoMatch ->
-        unionAtShiftRoot shift (g1 m1) (g2 (Leaf k2 v2))
+        unionAtShiftHandleEmpty shift (g1 m1) (g2 (Leaf k2 v2))
       Index _ i Match ->
         let (newBm, newAry) = runST (mergeLeafBranchRight shift k2 v2 bm1 ary1 i)
          in collapse (BM newBm) newAry

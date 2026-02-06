@@ -122,6 +122,9 @@ instance Show a => Show (Word64Map a) where
 instance Eq a => Eq (Word64Map a) where
   m1 == m2 = toList m1 == toList m2
 
+instance Ord a => Ord (Word64Map a) where
+  compare m1 m2 = compare (toList m1) (toList m2)
+
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v
   foldMap f (Branch _ ary) = Foldable.foldMap (foldMap f) ary

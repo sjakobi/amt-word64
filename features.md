@@ -55,7 +55,7 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 
 ## Instances
 - [x] **`Eq`**: Implemented.
-- [ ] **`Ord`**: Not yet implemented.
+- [x] **`Ord`**: Implemented.
 - [ ] **`Read`**: Not yet implemented.
 - [x] **`Show`**: Implemented.
 - [x] **`Functor`**: Implemented.

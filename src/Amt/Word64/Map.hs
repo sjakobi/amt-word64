@@ -52,6 +52,7 @@ module Amt.Word64.Map
   , InvariantViolation (..)
   ) where
 
+import Control.Monad.ST (runST)
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
 import Data.Foldable qualified as Foldable
@@ -321,14 +322,14 @@ insertUnsafe k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two 0# k v k' v'
-  Branch (BM bm) ary ->
+  branch@(Branch (BM bm) ary) ->
     case index 0# k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertAtShiftUnsafe (nextShift 0#) k v child
-         in Branch (BM bm) (updateAtUnsafe i newChild ary)
+         in updateAtUnsafe i newChild ary `seq` branch
       Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAtUnsafe i (Leaf k v) ary)
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
@@ -386,14 +387,14 @@ insertAtShiftUnsafe !s k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two s k v k' v'
-  Branch (BM bm) ary ->
+  branch@(Branch (BM bm) ary) ->
     case index s k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertAtShiftUnsafe (nextShift s) k v child
-         in Branch (BM bm) (updateAtUnsafe i newChild ary)
+         in updateAtUnsafe i newChild ary `seq` branch
       Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAtUnsafe i (Leaf k v) ary)
+        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two !shift k1 v1 k2 v2 =
@@ -569,15 +570,6 @@ insertAt i a ary = runSmallArray $ do
   copySmallArray mary (i + 1) ary i (n - i)
   return mary
 
-insertAtUnsafe :: Int -> a -> SmallArray a -> SmallArray a
-insertAtUnsafe i a ary = runSmallArray $ do
-  let n = sizeofSmallArray ary
-  mary <- newSmallArray (n + 1) (error "insertAtUnsafe: uninitialized")
-  copySmallArray mary 0 ary 0 i
-  writeSmallArray mary i a
-  copySmallArray mary (i + 1) ary i (n - i)
-  return mary
-
 updateAt :: Int -> a -> SmallArray a -> SmallArray a
 updateAt i a ary = runSmallArray $ do
   let n = sizeofSmallArray ary
@@ -587,12 +579,11 @@ updateAt i a ary = runSmallArray $ do
   return mary
 
 updateAtUnsafe :: Int -> a -> SmallArray a -> SmallArray a
-updateAtUnsafe i a ary = runSmallArray $ do
-  let n = sizeofSmallArray ary
-  mary <- newSmallArray n (error "updateAtUnsafe: uninitialized")
-  copySmallArray mary 0 ary 0 n
-  writeSmallArray mary i a
-  return mary
+updateAtUnsafe i a ary =
+  runST $ do
+    mary <- unsafeThawSmallArray ary
+    writeSmallArray mary i a
+    unsafeFreezeSmallArray mary
 
 removeAt :: Int -> SmallArray a -> SmallArray a
 removeAt i ary = runSmallArray $ do

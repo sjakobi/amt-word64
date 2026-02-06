@@ -79,7 +79,7 @@ import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
-import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
+import Text.Read (Lexeme (Ident, Punc), lexP, parens, readPrec, (+++))
 import Text.Show (showListWith)
 import Prelude hiding (filter, lookup, map, null)
 
@@ -176,10 +176,45 @@ instance Show1 Word64Map where
       showParen True (shows k . showString ", " . sp 0 v)
 
 instance Read1 Word64Map where
-  liftReadPrec _ rlp = parens $ do
+  liftReadPrec rp _ = parens $ do
     Ident "fromList" <- lexP
-    xs <- rlp
+    xs <- readPrecListWith (readPrecPair rp)
     pure (fromList xs)
+
+readPrecPair :: ReadPrec a -> ReadPrec (Word64, a)
+readPrecPair rp = parens $ do
+  Punc "(" <- lexP
+  k <- readPrec
+  Punc "," <- lexP
+  v <- rp
+  Punc ")" <- lexP
+  pure (k, v)
+
+readPrecListWith :: ReadPrec a -> ReadPrec [a]
+readPrecListWith rp = parens $ do
+  Punc "[" <- lexP
+  readListTail
+ where
+  readListTail =
+    ( do
+        Punc "]" <- lexP
+        pure []
+    )
+      +++ ( do
+              x <- rp
+              readListRest x
+          )
+
+  readListRest x =
+    ( do
+        Punc "," <- lexP
+        xs <- readListTail
+        pure (x : xs)
+    )
+      +++ ( do
+              Punc "]" <- lexP
+              pure [x]
+          )
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

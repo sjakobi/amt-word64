@@ -371,7 +371,7 @@ insertAtShift !s k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
--- | Unsafe insert using in-place updates. Handles empty at the root.
+-- | Unsafe insert using in-place updates. Expects a non-empty root.
 insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> ST s (Word64Map a)
 insertAtShiftUnsafe !s k v m = case m of
   Leaf k' v'

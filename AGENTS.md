@@ -29,9 +29,12 @@ This document provides essential context and guidelines for agents working on th
 
 Use standard `cabal` commands for development:
 
-- **Build**: `cabal build` (use `--enable-tests` to include test targets).
-- **Test**: `cabal test` or `cabal run amt-word64-test`.
-- **Clean**: `cabal clean`.
+Always run cabal with a randomized temp log file via `CABAL_LOG`. Example:
+`CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal build`
+
+- **Build**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal build` (use `--enable-tests` to include test targets).
+- **Test**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal run tests -- --hide-successes`.
+- **Clean**: `CABAL_LOG=/tmp/cabal-log-$(date +%s)-$$.log cabal clean`.
 
 ### Development Workflow
 

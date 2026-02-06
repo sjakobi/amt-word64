@@ -608,7 +608,6 @@ collapse bm ary = case sizeofSmallArray ary of
     _ -> Branch bm ary
   _ -> Branch bm ary
 
--- FIXME: Buggy
 mergeWithKey ::
   forall a b c.
   (Word64 -> a -> b -> Maybe c) ->

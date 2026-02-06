@@ -70,6 +70,7 @@ import Data.Foldable qualified as Foldable
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
+import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
 import Text.Read (Lexeme (Ident), lexP, parens, readListPrecDefault, readPrec)
 import Prelude hiding (filter, lookup, map, null)
@@ -132,6 +133,11 @@ instance Read a => Read (Word64Map a) where
     xs <- readPrec
     pure (fromList xs)
   readListPrec = readListPrecDefault
+
+instance Exts.IsList (Word64Map a) where
+  type Item (Word64Map a) = (Word64, a)
+  fromList = Amt.Word64.Map.fromList
+  toList = Amt.Word64.Map.toList
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

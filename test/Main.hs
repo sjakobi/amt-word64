@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main (main) where
 
@@ -52,11 +52,34 @@ import Amt.Word64.Map
   , valid
   )
 import Data.Bits qualified as Bits
+import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
+import Data.Functor.Classes
+  ( Eq1 (liftEq)
+  , Ord1 (liftCompare)
+  , Read1 (liftReadPrec)
+  , Show1 (liftShowsPrec)
+  )
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
+import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
+import Test.QuickCheck.Classes.Base
+  ( Laws (Laws)
+  , eqLaws
+  , foldableLaws
+  , functorLaws
+  , isListLaws
+  , monoidLaws
+  , ordLaws
+  , semigroupLaws
+  , showLaws
+  , showReadLaws
+  , traversableLaws
+  )
 import Test.Tasty
 import Test.Tasty.QuickCheck
+import Text.Read (readListPrec, readPrec, readPrec_to_S)
 import Prelude hiding (filter, lookup, map, null)
 
 newtype K = K Word64
@@ -65,6 +88,10 @@ newtype K = K Word64
 instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
+
+instance Arbitrary a => Arbitrary (Word64Map a) where
+  arbitrary = fromKList <$> arbitrary
+  shrink m = fromKList <$> shrink (toSortedList m)
 
 toWord64 :: K -> Word64
 toWord64 (K w) = w
@@ -78,8 +105,12 @@ fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
 main :: IO ()
 main =
   defaultMain $
-    localOption (QuickCheckTests 1000) $
-      localOption (QuickCheckMaxSize 500) tests
+    testGroup
+      "Word64Map tests"
+      [ localOption (QuickCheckTests 1000) $
+          localOption (QuickCheckMaxSize 500) tests
+      , instanceTests
+      ]
 
 tests :: TestTree
 tests =
@@ -310,13 +341,85 @@ tests =
         ]
     ]
 
+instanceTests :: TestTree
+instanceTests =
+  testGroup
+    "instance laws"
+    [ lawsToTestTree (eqLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (ordLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (showLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (showReadLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (monoidLaws (Proxy :: Proxy (Word64Map Int)))
+    , lawsToTestTree (functorLaws (Proxy :: Proxy Word64Map))
+    , lawsToTestTree (foldableLaws (Proxy :: Proxy Word64Map))
+    , lawsToTestTree (traversableLaws (Proxy :: Proxy Word64Map))
+    , lawsToTestTree (isListLaws (Proxy :: Proxy (Word64Map Int)))
+    , testGroup
+        "Data"
+        [ testProperty "gmapQi roundtrip" prop_data_gmapQi
+        , testProperty "toConstr is fromList" prop_data_toConstr
+        ]
+    , testGroup
+        "Eq1/Ord1/Show1/Read1"
+        [ testProperty "Eq1 liftEq matches Eq" prop_eq1_liftEq
+        , testProperty "Ord1 liftCompare matches Ord" prop_ord1_liftCompare
+        , testProperty "Show1 liftShowsPrec matches Show" prop_show1_matches_show
+        , testProperty "Read1 liftReadPrec roundtrip" prop_read1_roundtrip
+        ]
+    ]
+
 toSortedList :: Word64Map a -> [(K, a)]
 toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
+
+lawsToTestTree :: Laws -> TestTree
+lawsToTestTree (Laws name props) =
+  testGroup name $
+    [ testProperty propName prop
+    | (propName, prop) <- props
+    ]
 
 checkValid :: Word64Map a -> Property
 checkValid m = case valid m of
   Nothing -> property True
   Just err -> counterexample (show err) False
+
+prop_data_gmapQi :: [(K, Int)] -> Property
+prop_data_gmapQi xs =
+  let m = fromKList xs
+   in property $ gmapQi 0 cast m == Just (toList m)
+
+prop_data_toConstr :: [(K, Int)] -> Property
+prop_data_toConstr xs =
+  let m = fromKList xs
+      dt = dataTypeOf m
+   in property $ Just (toConstr m) == listToMaybe (dataTypeConstrs dt)
+
+prop_eq1_liftEq :: [(K, Int)] -> [(K, Int)] -> Property
+prop_eq1_liftEq xs ys =
+  let m1 = fromKList xs
+      m2 = fromKList ys
+   in property $ liftEq (==) m1 m2 == (m1 == m2)
+
+prop_ord1_liftCompare :: [(K, Int)] -> [(K, Int)] -> Property
+prop_ord1_liftCompare xs ys =
+  let m1 = fromKList xs
+      m2 = fromKList ys
+   in property $ liftCompare compare m1 m2 == compare m1 m2
+
+prop_show1_matches_show :: [(K, Int)] -> Property
+prop_show1_matches_show xs =
+  let m = fromKList xs
+      s1 = liftShowsPrec showsPrec showList 0 m ""
+      s2 = showsPrec 0 m ""
+   in property $ s1 == s2
+
+prop_read1_roundtrip :: [(K, Int)] -> Property
+prop_read1_roundtrip xs =
+  let m = fromKList xs
+      s = showsPrec 0 m ""
+      parses = readPrec_to_S (liftReadPrec readPrec readListPrec) 0 s
+   in property $ any ((== m) . fst) parses
 
 prop_singleton_model :: K -> Int -> Property
 prop_singleton_model k v =

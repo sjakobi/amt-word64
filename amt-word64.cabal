@@ -70,6 +70,7 @@ library
     -- Other library packages from which modules are imported.
     build-depends:
         base >=4.20 && <4.23,
+        deepseq,
         primitive ^>=0.9.0.0
 
     -- Directories containing source files.
@@ -82,7 +83,8 @@ test-suite amt-word64-test
     -- Import common warning flags.
     import:           warnings
 
-    ghc-options:      -threaded -with-rtsopts=-N
+    -- The test suite defines orphan Arbitrary instances for law checks.
+    ghc-options:      -threaded -with-rtsopts=-N -Wno-orphans
 
     -- Base language which the package is written in.
     default-language: GHC2024
@@ -108,5 +110,6 @@ test-suite amt-word64-test
         amt-word64,
         containers,
         QuickCheck,
+        quickcheck-classes-base,
         tasty,
         tasty-quickcheck

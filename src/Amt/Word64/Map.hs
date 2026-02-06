@@ -1,6 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Amt.Word64.Map
   ( Word64Map
@@ -54,14 +55,33 @@ module Amt.Word64.Map
   , InvariantViolation (..)
   ) where
 
+import Control.DeepSeq (NFData (rnf), NFData1 (liftRnf), rnf1)
 import Control.Monad.ST (ST, runST)
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
+import Data.Data
+  ( Constr
+  , Data (..)
+  , DataType
+  , Fixity (Prefix)
+  , mkConstr
+  , mkDataType
+  )
 import Data.Foldable qualified as Foldable
+import Data.Functor.Classes
+  ( Eq1 (liftEq)
+  , Ord1 (liftCompare)
+  , Read1 (liftReadPrec)
+  , Show1 (liftShowsPrec)
+  , showsUnaryWith
+  )
+import Data.Functor.Classes qualified as FunctorClasses
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
+import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
+import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
 import Prelude hiding (filter, lookup, map, null)
 
 data InvariantViolation
@@ -113,6 +133,46 @@ instance Show a => Show (Word64Map a) where
 instance Eq a => Eq (Word64Map a) where
   m1 == m2 = toList m1 == toList m2
 
+instance Ord a => Ord (Word64Map a) where
+  compare m1 m2 = compare (toList m1) (toList m2)
+
+instance Read a => Read (Word64Map a) where
+  readPrec = parens $ do
+    Ident "fromList" <- lexP
+    xs <- readPrec
+    pure (fromList xs)
+
+instance Exts.IsList (Word64Map a) where
+  type Item (Word64Map a) = (Word64, a)
+  fromList = Amt.Word64.Map.fromList
+  toList = Amt.Word64.Map.toList
+
+instance Eq1 Word64Map where
+  liftEq f m1 m2 =
+    FunctorClasses.liftEq (FunctorClasses.liftEq f) (toList m1) (toList m2)
+
+instance Ord1 Word64Map where
+  liftCompare f m1 m2 =
+    FunctorClasses.liftCompare
+      (FunctorClasses.liftCompare f)
+      (toList m1)
+      (toList m2)
+
+instance Show1 Word64Map where
+  liftShowsPrec sp sl d =
+    let showPair = FunctorClasses.liftShowsPrec sp sl
+        showPairs = FunctorClasses.liftShowsPrec showPair (FunctorClasses.liftShowList sp sl)
+     in showsUnaryWith showPairs "fromList" d . toList
+
+instance Read1 Word64Map where
+  liftReadPrec rp rlp = parens $ do
+    Ident "fromList" <- lexP
+    let readPair = FunctorClasses.liftReadPrec rp rlp
+        readPairs =
+          FunctorClasses.liftReadPrec readPair (FunctorClasses.liftReadListPrec rp rlp)
+    xs <- readPairs
+    pure (fromList xs)
+
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v
   foldMap f (Branch _ ary) = Foldable.foldMap (foldMap f) ary
@@ -127,6 +187,36 @@ instance Foldable Word64Map where
 instance Traversable Word64Map where
   traverse f (Leaf k v) = Leaf k <$> f v
   traverse f (Branch bm ary) = Branch bm <$> traverse (traverse f) ary
+
+instance Semigroup (Word64Map a) where
+  (<>) = union
+
+instance Monoid (Word64Map a) where
+  mempty = empty
+  mappend = (<>)
+
+instance NFData1 Word64Map where
+  liftRnf f (Leaf _ v) = f v
+  liftRnf f (Branch _ ary) =
+    Foldable.foldr (\m acc -> liftRnf f m `seq` acc) () ary
+
+instance NFData a => NFData (Word64Map a) where
+  rnf = rnf1
+
+instance Data a => Data (Word64Map a) where
+  gfoldl k z m = z fromList `k` toList m
+  gunfold k z c
+    | c == fromListConstr = k (z fromList)
+    | otherwise = error "gunfold: expected fromList"
+  toConstr _ = fromListConstr
+  dataTypeOf _ = word64MapDataType
+
+word64MapDataType :: DataType
+word64MapDataType =
+  mkDataType "Amt.Word64.Map.Word64Map" [fromListConstr]
+
+fromListConstr :: Constr
+fromListConstr = mkConstr word64MapDataType "fromList" [] Prefix
 
 newtype Bitmap = BM Word64
 

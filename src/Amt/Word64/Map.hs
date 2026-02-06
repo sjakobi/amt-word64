@@ -464,7 +464,7 @@ mapWithKey f (Leaf k v) = Leaf k (f k v)
 mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
-union m1 m2 = unionAtShift 0# m1 m2
+union m1 m2 = unionAtShiftRoot 0# m1 m2
 
 {- | Merge two branch arrays by walking the union bitmap once.
 
@@ -512,10 +512,14 @@ unionBranches bm1 ary1 bm2 ary2 both =
           step newBm 0 0 0
       )
 
-unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
-unionAtShift !shift m1 m2 = case (m1, m2) of
+unionAtShiftRoot :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShiftRoot !shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
+  _ -> unionAtShift shift m1 m2
+
+unionAtShift :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShift !shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
@@ -533,13 +537,18 @@ unionWith f = unionWithKey (\_ x y -> f x y)
 
 unionWithKey ::
   (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
-unionWithKey f m1 m2 = unionWithKeyAtShift 0# f m1 m2
+unionWithKey f m1 m2 = unionWithKeyAtShiftRoot 0# f m1 m2
+
+unionWithKeyAtShiftRoot ::
+  Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWithKeyAtShiftRoot !shift f m1 m2 = case (m1, m2) of
+  (Branch (BM 0) _, _) -> m2
+  (_, Branch (BM 0) _) -> m1
+  _ -> unionWithKeyAtShift shift f m1 m2
 
 unionWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
-  (Branch (BM 0) _, _) -> m2
-  (_, Branch (BM 0) _) -> m1
   (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
   (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
@@ -621,24 +630,24 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
   go _ (Branch (BM 0) _) m2 = g2 m2
   go _ m1 (Branch (BM 0) _) = g1 m1
   go !shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
-    Nothing -> unionAtShift shift (g1 (Leaf k1 v1)) (g2 m2)
+    Nothing -> unionAtShiftRoot shift (g1 (Leaf k1 v1)) (g2 m2)
     Just v2 ->
       let rest = deleteAtShift shift k1 m2
        in case f k1 v1 v2 of
             Nothing -> g2 rest
             Just v' -> insertAtShift shift k1 v' (g2 rest)
   go !shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
-    Nothing -> unionAtShift shift (g1 m1) (g2 (Leaf k2 v2))
+    Nothing -> unionAtShiftRoot shift (g1 m1) (g2 (Leaf k2 v2))
     Just v1 ->
       let rest = deleteAtShift shift k2 m1
        in case f k2 v1 v2 of
             Nothing -> g1 rest
             Just v' -> insertAtShift shift k2 v' (g1 rest)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let (newBm, newAry) = runST (goArray shift bm1 ary1 bm2 ary2)
+    let (newBm, newAry) = runST (mergeWithKeyBranches shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
-  goArray ::
+  mergeWithKeyBranches ::
     forall s.
     Shift ->
     Word64 ->
@@ -646,7 +655,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
     Word64 ->
     SmallArray (Word64Map b) ->
     ST s (Word64, SmallArray (Word64Map c))
-  goArray shift bm1 ary1 bm2 ary2 = do
+  mergeWithKeyBranches shift bm1 ary1 bm2 ary2 = do
     let unionBm = bm1 .|. bm2
         n = popCount unionBm
     if n == 0
@@ -724,19 +733,10 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
       Nothing -> deleteAtShift shift k2 m1
       Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
   go !shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let (newBm, newAry) = differenceBranches shift bm1 ary1 bm2 ary2
+    let (newBm, newAry) = runST (differenceBranches shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
   differenceBranches ::
-    Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
-    (Word64, SmallArray (Word64Map a))
-  differenceBranches shift bm1 ary1 bm2 ary2 = runST (goArray shift bm1 ary1 bm2 ary2)
-
-  goArray ::
     forall s.
     Shift ->
     Word64 ->
@@ -744,7 +744,7 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
     Word64 ->
     SmallArray (Word64Map b) ->
     ST s (Word64, SmallArray (Word64Map a))
-  goArray shift bm1 ary1 bm2 ary2 = do
+  differenceBranches shift bm1 ary1 bm2 ary2 = do
     let unionBm = bm1 .|. bm2
         n = popCount bm1
     if n == 0
@@ -764,6 +764,7 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
                   let bit = lowBit w
                       has1 = bm1 .&. bit /= 0
                       has2 = bm2 .&. bit /= 0
+                      -- TODO: Avoid Maybe allocations in this inner loop.
                       (m1, i1') =
                         if has1
                           then (Just (indexSmallArray ary1 i1), i1 + 1)
@@ -873,8 +874,7 @@ filterWithKey f = go
     | bm == 0 = empty
     | otherwise =
         let (newBm, newAry) = runST (goArray bm ary)
-         in collapse (BM newBm) newAry
-
+         in collapse (BM newBm) newAry -- keep invariant by collapsing empty/single-leaf branches
   goArray ::
     forall s.
     Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map a))

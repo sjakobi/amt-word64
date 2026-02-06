@@ -109,9 +109,6 @@ test-suite amt-word64-test
         amt-word64,
         containers,
         QuickCheck,
-        -- Avoid quickcheck-classes: it pulls in aeson, which is not yet
-        -- available for GHC 9.14 in CI.
-        -- It also brings in vector, which is slow to build in CI.
         quickcheck-classes-base,
         tasty,
         tasty-quickcheck

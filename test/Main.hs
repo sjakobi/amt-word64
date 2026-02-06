@@ -73,6 +73,7 @@ import Test.QuickCheck.Classes.Base
   , semigroupLaws
   , showLaws
   , showReadLaws
+  , traversableLaws
   )
 import Test.Tasty
 import Test.Tasty.QuickCheck
@@ -82,7 +83,19 @@ newtype K = K Word64
   deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
 
 newtype MapA a = MapA {getMapA :: Word64Map a}
-  deriving newtype (Eq, Ord, Show, Read, Semigroup, Monoid, Functor, Foldable)
+  deriving newtype
+    ( Eq
+    , Ord
+    , Show
+    , Read
+    , Semigroup
+    , Monoid
+    , Functor
+    , Foldable
+    )
+
+instance Traversable MapA where
+  traverse f (MapA m) = MapA <$> traverse f m
 
 instance Exts.IsList (MapA a) where
   type Item (MapA a) = (Word64, a)
@@ -362,6 +375,7 @@ instanceTests =
     , lawsToTestTree (monoidLaws (Proxy :: Proxy (MapA Int)))
     , lawsToTestTree (functorLaws (Proxy :: Proxy MapA))
     , lawsToTestTree (foldableLaws (Proxy :: Proxy MapA))
+    , lawsToTestTree (traversableLaws (Proxy :: Proxy MapA))
     , lawsToTestTree (isListLaws (Proxy :: Proxy (MapA Int)))
     ]
 

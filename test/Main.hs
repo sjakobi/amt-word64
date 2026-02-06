@@ -20,6 +20,7 @@ import Amt.Word64.Map
   , foldrWithKey
   , fromList
   , insert
+  , insertIfNotExists
   , insertWith
   , insertWithKey
   , intersection
@@ -51,6 +52,7 @@ import Amt.Word64.Map
   , updateWithKey
   , valid
   )
+import Control.Exception (SomeException, displayException, evaluate, try)
 import Data.Bits qualified as Bits
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
 import Data.Functor.Classes
@@ -64,6 +66,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
+import NoThunks.Class (NoThunks, ThunkInfo, noThunks)
 import Test.QuickCheck.Classes.Base
   ( Laws (Laws)
   , eqLaws
@@ -101,6 +104,22 @@ fromWord64 = K
 
 fromKList :: [(K, a)] -> Word64Map a
 fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
+
+boom :: a
+boom = error "value forced"
+
+boomMap :: [(K, Int)] -> Word64Map Int
+boomMap = fromList . L.map (\(k, _) -> (toWord64 k, boom))
+
+checkNoThunks :: NoThunks a => a -> Property
+checkNoThunks x =
+  ioProperty $ do
+    _ <- evaluate x
+    res <- try (noThunks [] x) :: IO (Either SomeException (Maybe ThunkInfo))
+    pure $ case res of
+      Left err -> counterexample (displayException err) False
+      Right Nothing -> property True
+      Right (Just info) -> counterexample (show info) False
 
 main :: IO ()
 main =
@@ -338,6 +357,43 @@ tests =
     , testGroup
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
+        ]
+    , testGroup
+        "strictness"
+        [ testProperty "empty spine-strict" prop_empty_spineStrict
+        , testProperty "singleton spine-strict" prop_singleton_spineStrict
+        , testProperty "fromList spine-strict" prop_fromList_spineStrict
+        , testProperty "insert spine-strict" prop_insert_spineStrict
+        , testProperty "insertWith spine-strict" prop_insertWith_spineStrict
+        , testProperty "insertWithKey spine-strict" prop_insertWithKey_spineStrict
+        , testProperty "insertIfNotExists spine-strict" prop_insertIfNotExists_spineStrict
+        , testProperty "delete spine-strict" prop_delete_spineStrict
+        , testProperty "adjust spine-strict" prop_adjust_spineStrict
+        , testProperty "adjustWithKey spine-strict" prop_adjustWithKey_spineStrict
+        , testProperty "update spine-strict" prop_update_spineStrict
+        , testProperty "updateWithKey spine-strict" prop_updateWithKey_spineStrict
+        , testProperty "alter spine-strict" prop_alter_spineStrict
+        , testProperty "map spine-strict" prop_map_spineStrict
+        , testProperty "mapWithKey spine-strict" prop_mapWithKey_spineStrict
+        , testProperty "union spine-strict" prop_union_spineStrict
+        , testProperty "unionWith spine-strict" prop_unionWith_spineStrict
+        , testProperty "unionWithKey spine-strict" prop_unionWithKey_spineStrict
+        , testProperty "mergeWithKey spine-strict" prop_mergeWithKey_spineStrict
+        , testProperty "difference spine-strict" prop_difference_spineStrict
+        , testProperty "differenceWith spine-strict" prop_differenceWith_spineStrict
+        , testProperty "intersection spine-strict" prop_intersection_spineStrict
+        , testProperty "intersectionWith spine-strict" prop_intersectionWith_spineStrict
+        , testProperty
+            "intersectionWithKey spine-strict"
+            prop_intersectionWithKey_spineStrict
+        , testProperty "filter spine-strict" prop_filter_spineStrict
+        , testProperty "filterWithKey spine-strict" prop_filterWithKey_spineStrict
+        , testProperty "partition spine-strict" prop_partition_spineStrict
+        , testProperty "partitionWithKey spine-strict" prop_partitionWithKey_spineStrict
+        , testProperty "mapMaybe spine-strict" prop_mapMaybe_spineStrict
+        , testProperty "mapMaybeWithKey spine-strict" prop_mapMaybeWithKey_spineStrict
+        , testProperty "mapEither spine-strict" prop_mapEither_spineStrict
+        , testProperty "mapEitherWithKey spine-strict" prop_mapEitherWithKey_spineStrict
         ]
     ]
 
@@ -1049,3 +1105,145 @@ prop_mergeWithKey_differenceWithKey_model e1 e2 =
       m2 = fromKList e2
    in mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2
         === differenceWith f m1 m2
+
+prop_empty_spineStrict :: Property
+prop_empty_spineStrict = checkNoThunks (empty @Int)
+
+prop_singleton_spineStrict :: K -> Property
+prop_singleton_spineStrict k = checkNoThunks (singleton (toWord64 k) boom)
+
+prop_fromList_spineStrict :: [(K, Int)] -> Property
+prop_fromList_spineStrict entries = checkNoThunks (boomMap entries)
+
+prop_insert_spineStrict :: [(K, Int)] -> K -> Property
+prop_insert_spineStrict entries k =
+  checkNoThunks (insert (toWord64 k) boom (boomMap entries))
+
+prop_insertWith_spineStrict :: [(K, Int)] -> K -> Property
+prop_insertWith_spineStrict entries k =
+  checkNoThunks (insertWith (\_ _ -> boom) (toWord64 k) boom (boomMap entries))
+
+prop_insertWithKey_spineStrict :: [(K, Int)] -> K -> Property
+prop_insertWithKey_spineStrict entries k =
+  checkNoThunks
+    (insertWithKey (\_ _ _ -> boom) (toWord64 k) boom (boomMap entries))
+
+prop_insertIfNotExists_spineStrict :: [(K, Int)] -> K -> Property
+prop_insertIfNotExists_spineStrict entries k =
+  checkNoThunks (insertIfNotExists (toWord64 k) boom (boomMap entries))
+
+prop_delete_spineStrict :: [(K, Int)] -> [K] -> Property
+prop_delete_spineStrict entries ks =
+  checkNoThunks
+    ( foldl
+        (\m k -> delete (toWord64 k) m)
+        (boomMap entries)
+        ks
+    )
+
+prop_adjust_spineStrict :: [(K, Int)] -> K -> Property
+prop_adjust_spineStrict entries k =
+  checkNoThunks (adjust (const boom) (toWord64 k) (boomMap entries))
+
+prop_adjustWithKey_spineStrict :: [(K, Int)] -> K -> Property
+prop_adjustWithKey_spineStrict entries k =
+  checkNoThunks (adjustWithKey (\_ _ -> boom) (toWord64 k) (boomMap entries))
+
+prop_update_spineStrict :: [(K, Int)] -> K -> Property
+prop_update_spineStrict entries k =
+  checkNoThunks (update (const (Just boom)) (toWord64 k) (boomMap entries))
+
+prop_updateWithKey_spineStrict :: [(K, Int)] -> K -> Property
+prop_updateWithKey_spineStrict entries k =
+  checkNoThunks (updateWithKey (\_ _ -> Just boom) (toWord64 k) (boomMap entries))
+
+prop_alter_spineStrict :: [(K, Int)] -> K -> Property
+prop_alter_spineStrict entries k =
+  checkNoThunks (alter (const (Just boom)) (toWord64 k) (boomMap entries))
+
+prop_map_spineStrict :: [(K, Int)] -> Property
+prop_map_spineStrict entries =
+  checkNoThunks (map (const boom) (boomMap entries))
+
+prop_mapWithKey_spineStrict :: [(K, Int)] -> Property
+prop_mapWithKey_spineStrict entries =
+  checkNoThunks (mapWithKey (\_ _ -> boom) (boomMap entries))
+
+prop_union_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_union_spineStrict e1 e2 =
+  checkNoThunks (union (boomMap e1) (boomMap e2))
+
+prop_unionWith_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_unionWith_spineStrict e1 e2 =
+  checkNoThunks (unionWith (\_ _ -> boom) (boomMap e1) (boomMap e2))
+
+prop_unionWithKey_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_unionWithKey_spineStrict e1 e2 =
+  checkNoThunks (unionWithKey (\_ _ _ -> boom) (boomMap e1) (boomMap e2))
+
+prop_mergeWithKey_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_mergeWithKey_spineStrict e1 e2 =
+  checkNoThunks
+    ( mergeWithKey
+        (\_ _ _ -> Just boom)
+        id
+        id
+        (boomMap e1)
+        (boomMap e2)
+    )
+
+prop_difference_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_difference_spineStrict e1 e2 =
+  checkNoThunks (difference (boomMap e1) (boomMap e2))
+
+prop_differenceWith_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_differenceWith_spineStrict e1 e2 =
+  checkNoThunks (differenceWith (\_ _ -> Just boom) (boomMap e1) (boomMap e2))
+
+prop_intersection_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_intersection_spineStrict e1 e2 =
+  checkNoThunks (intersection (boomMap e1) (boomMap e2))
+
+prop_intersectionWith_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_intersectionWith_spineStrict e1 e2 =
+  checkNoThunks (intersectionWith (\_ _ -> boom) (boomMap e1) (boomMap e2))
+
+prop_intersectionWithKey_spineStrict :: [(K, Int)] -> [(K, Int)] -> Property
+prop_intersectionWithKey_spineStrict e1 e2 =
+  checkNoThunks (intersectionWithKey (\_ _ _ -> boom) (boomMap e1) (boomMap e2))
+
+prop_filter_spineStrict :: [(K, Int)] -> Property
+prop_filter_spineStrict entries =
+  checkNoThunks (filter (const True) (boomMap entries))
+
+prop_filterWithKey_spineStrict :: [(K, Int)] -> Property
+prop_filterWithKey_spineStrict entries =
+  checkNoThunks (filterWithKey (\_ _ -> True) (boomMap entries))
+
+prop_partition_spineStrict :: [(K, Int)] -> Property
+prop_partition_spineStrict entries =
+  let (l, r) = partition (const True) (boomMap entries)
+   in checkNoThunks l .&&. checkNoThunks r
+
+prop_partitionWithKey_spineStrict :: [(K, Int)] -> Property
+prop_partitionWithKey_spineStrict entries =
+  let (l, r) = partitionWithKey (\_ _ -> True) (boomMap entries)
+   in checkNoThunks l .&&. checkNoThunks r
+
+prop_mapMaybe_spineStrict :: [(K, Int)] -> Property
+prop_mapMaybe_spineStrict entries =
+  checkNoThunks (mapMaybe (const (Just boom)) (boomMap entries))
+
+prop_mapMaybeWithKey_spineStrict :: [(K, Int)] -> Property
+prop_mapMaybeWithKey_spineStrict entries =
+  checkNoThunks (mapMaybeWithKey (\_ _ -> Just boom) (boomMap entries))
+
+prop_mapEither_spineStrict :: [(K, Int)] -> Property
+prop_mapEither_spineStrict entries =
+  let (l, r) = mapEither (const (Left boom)) (boomMap entries)
+   in checkNoThunks l .&&. checkNoThunks r
+
+prop_mapEitherWithKey_spineStrict :: [(K, Int)] -> Property
+prop_mapEitherWithKey_spineStrict entries =
+  let (l, r) = mapEitherWithKey (\_ _ -> Left boom) (boomMap entries)
+   in checkNoThunks l .&&. checkNoThunks r

@@ -90,6 +90,7 @@ import GHC.Exts
   )
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
+import NoThunks.Class (NoThunks (..))
 import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
 import Prelude hiding (filter, lookup, map, null)
 
@@ -134,7 +135,7 @@ data Word64Map a
 
 instance Functor Word64Map where
   fmap f (Leaf k v) = Leaf k (f v)
-  fmap f (Branch bm ary) = Branch bm (fmap (fmap f) ary)
+  fmap f (Branch bm ary) = Branch bm (mapSmallArrayStrict (fmap f) ary)
 
 instance Show a => Show (Word64Map a) where
   show m = "fromList " ++ show (toList m)
@@ -236,6 +237,23 @@ instance NFData1 Word64Map where
 
 instance NFData a => NFData (Word64Map a) where
   rnf = rnf1
+
+instance NoThunks (Word64Map a) where
+  wNoThunks ctxt m = case m of
+    Leaf _ _ -> pure Nothing
+    Branch _ ary ->
+      let n = sizeofSmallArray ary
+          go i
+            | i == n = pure Nothing
+            | otherwise = do
+                let child = indexSmallArray ary i
+                res <- wNoThunks (ctxt ++ ["child[" ++ show i ++ "]"]) child
+                case res of
+                  Nothing -> go (i + 1)
+                  Just _ -> pure res
+       in go 0
+
+  showTypeOf _ = "Word64Map"
 
 instance Data a => Data (Word64Map a) where
   gfoldl k z m = z fromList `k` toList m
@@ -460,7 +478,7 @@ insert !k v m = case m of
     case index 0# k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift 0#) k v child
+            !newChild = insertAtShift (nextShift 0#) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -485,7 +503,7 @@ insertWithKey f !k v m = case m of
     case index 0# k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift 0#) f k v child
+            !newChild = insertWithKeyAtShift (nextShift 0#) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -501,7 +519,7 @@ insertWithKeyAtShift s f !k v m = case m of
     case index s k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift s) f k v child
+            !newChild = insertWithKeyAtShift (nextShift s) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -516,7 +534,7 @@ insertAtShift s !k v m = case m of
     case index s k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift s) k v child
+            !newChild = insertAtShift (nextShift s) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -550,7 +568,7 @@ two shift !k1 v1 !k2 v2 =
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
            in Branch (BM bm) ary
         else
-          let child = two (nextShift shift) k1 v1 k2 v2
+          let !child = two (nextShift shift) k1 v1 k2 v2
               bm = Bits.bit idx1
            in Branch (BM bm) (smallArrayFromList [child])
 
@@ -591,7 +609,7 @@ adjustWithKey f !k m = go 0# m
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = go (nextShift shift) child
+            !newChild = go (nextShift shift) child
          in Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
@@ -615,7 +633,7 @@ map = fmap
 
 mapWithKey :: (Word64 -> a -> b) -> Word64Map a -> Word64Map b
 mapWithKey f (Leaf k v) = Leaf k (f k v)
-mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
+mapWithKey f (Branch bm ary) = Branch bm (mapSmallArrayStrict (mapWithKey f) ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
 union m1 m2 = unionAtShiftHandleEmpty 0# m1 m2
@@ -646,7 +664,7 @@ unionBranches bm1 ary1 bm2 ary2 both =
                     let bit = lowBit w
                         has1 = bm1 .&. bit /= 0
                         has2 = bm2 .&. bit /= 0
-                        (child, i1', i2') = case (has1, has2) of
+                        (child0, i1', i2') = case (has1, has2) of
                           (True, True) ->
                             ( both
                                 (indexSmallArray ary1 i1)
@@ -659,6 +677,7 @@ unionBranches bm1 ary1 bm2 ary2 both =
                           (False, True) ->
                             (indexSmallArray ary2 i2, i1, i2 + 1)
                           (False, False) -> error "unionBranches: impossible"
+                        !child = child0
                         w' = clearLowBit w
                      in do
                           writeSmallArray mary j child
@@ -727,7 +746,7 @@ insertIfNotExistsAtShift shift !k v m = case m of
     case index shift k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertIfNotExistsAtShift (nextShift shift) k v child
+            !newChild = insertIfNotExistsAtShift (nextShift shift) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
@@ -739,8 +758,20 @@ toList :: Word64Map a -> [(Word64, a)]
 toList (Leaf k v) = [(k, v)]
 toList (Branch _ ary) = concatMap toList (Foldable.toList ary)
 
+mapSmallArrayStrict :: (a -> b) -> SmallArray a -> SmallArray b
+mapSmallArrayStrict f ary = runSmallArray $ do
+  let n = sizeofSmallArray ary
+  mary <- newSmallArray n (error "mapSmallArrayStrict")
+  let step !i
+        | i == n = pure mary
+        | otherwise = do
+            let !b = f (indexSmallArray ary i)
+            writeSmallArray mary i b
+            step (i + 1)
+  step 0
+
 insertAt :: Int -> a -> SmallArray a -> SmallArray a
-insertAt i a ary = runSmallArray $ do
+insertAt i !a ary = runSmallArray $ do
   let n = sizeofSmallArray ary
   mary <- newSmallArray (n + 1) a
   copySmallArray mary 0 ary 0 i
@@ -748,7 +779,7 @@ insertAt i a ary = runSmallArray $ do
   return mary
 
 updateAt :: Int -> a -> SmallArray a -> SmallArray a
-updateAt i a ary = runSmallArray $ do
+updateAt i !a ary = runSmallArray $ do
   let n = sizeofSmallArray ary
   mary <- newSmallArray n a
   copySmallArray mary 0 ary 0 n
@@ -756,7 +787,7 @@ updateAt i a ary = runSmallArray $ do
   return mary
 
 updateAtUnsafe :: Int -> a -> SmallArray a -> ST s (SmallArray a)
-updateAtUnsafe i a ary = do
+updateAtUnsafe i !a ary = do
   mary <- unsafeThawSmallArray ary
   writeSmallArray mary i a
   unsafeFreezeSmallArray mary

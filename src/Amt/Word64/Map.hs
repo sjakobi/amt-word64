@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MagicHash #-}
 
 module Amt.Word64.Map
@@ -212,7 +213,7 @@ validSubtrees shift prefix bm ary
 Use this when the array index is needed regardless of presence.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
-index shift k (BM bm) =
+index shift !k (BM bm) =
   let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
       bit = 1 `unsafeShiftL` ix
       i = popCount (bm .&. (bit - 1))
@@ -225,7 +226,7 @@ index shift k (BM bm) =
 This avoids a 'popCount' when the lookup misses.
 -}
 indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
-indexMatch shift k (BM bm) =
+indexMatch shift !k (BM bm) =
   let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
       bit = 1 `unsafeShiftL` ix
    in if bm .&. bit == 0
@@ -238,7 +239,7 @@ empty = Branch (BM 0) mempty
 {-# NOINLINE empty #-}
 
 singleton :: Word64 -> a -> Word64Map a
-singleton = Leaf
+singleton !k v = Leaf k v
 
 null :: Word64Map a -> Bool
 null (Branch (BM 0) _) = True
@@ -249,11 +250,11 @@ size (Leaf _ _) = 1
 size (Branch _ ary) = Foldable.sum (fmap size ary)
 
 lookup :: Word64 -> Word64Map a -> Maybe a
-lookup k m = case k of
+lookup !k m = case k of
   W64# ww -> lookupAtShift# 0# ww m
 
 lookupAtShift :: Shift -> Word64 -> Word64Map a -> Maybe a
-lookupAtShift shift k = case k of
+lookupAtShift shift !k = case k of
   W64# ww -> lookupAtShift# shift ww
 
 lookupAtShift# :: Shift -> Word64# -> Word64Map a -> Maybe a
@@ -271,15 +272,15 @@ lookupAtShift# shift k = go shift
       Just i -> go (nextShift s) (indexSmallArray ary i)
 
 member :: Word64 -> Word64Map a -> Bool
-member k m = case lookup k m of
+member !k m = case lookup k m of
   Just _ -> True
   Nothing -> False
 
 notMember :: Word64 -> Word64Map a -> Bool
-notMember k m = not (member k m)
+notMember !k m = not (member k m)
 
 findWithDefault :: a -> Word64 -> Word64Map a -> a
-findWithDefault def k m = case lookup k m of
+findWithDefault def !k m = case lookup k m of
   Just v -> v
   Nothing -> def
 
@@ -301,7 +302,7 @@ foldlWithKey' f z (Leaf k v) = f z k v
 foldlWithKey' f z (Branch _ ary) = Foldable.foldl' (\acc m -> foldlWithKey' f acc m) z ary
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
-insert k v m = case m of
+insert !k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k v
@@ -316,11 +317,11 @@ insert k v m = case m of
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWith f = insertWithKey (\_ new old -> f new old)
+insertWith f !k v m = insertWithKey (\_ new old -> f new old) k v m
 
 insertWithKey ::
   (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWithKey f k v m = case m of
+insertWithKey f !k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
@@ -337,7 +338,7 @@ insertWithKey f k v m = case m of
 -- | Only valid for internal nodes.
 insertWithKeyAtShift ::
   Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWithKeyAtShift !s f k v m = case m of
+insertWithKeyAtShift !s f !k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
     | otherwise -> two s k v k' v'
@@ -352,7 +353,7 @@ insertWithKeyAtShift !s f k v m = case m of
 
 -- | Only valid for internal nodes.
 insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertAtShift !s k v m = case m of
+insertAtShift !s !k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two s k v k' v'
@@ -366,7 +367,7 @@ insertAtShift !s k v m = case m of
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
-two !shift k1 v1 k2 v2 =
+two !shift !k1 v1 !k2 v2 =
   let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
       idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
    in if idx1 /= idx2
@@ -383,10 +384,10 @@ two !shift k1 v1 k2 v2 =
            in Branch (BM bm) (smallArrayFromList [child])
 
 delete :: Word64 -> Word64Map a -> Word64Map a
-delete = deleteAtShift 0#
+delete !k = deleteAtShift 0# k
 
 deleteAtShift :: Shift -> Word64 -> Word64Map a -> Word64Map a
-deleteAtShift !shift k m = go shift m
+deleteAtShift !shift !k m = go shift m
  where
   go _ (Leaf k' _) | k == k' = empty
   go _ leaf@(Leaf _ _) = leaf
@@ -406,10 +407,10 @@ deleteAtShift !shift k m = go shift m
                  in collapse (BM bm) newAry
 
 adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
-adjust f = adjustWithKey (\_ x -> f x)
+adjust f !k m = adjustWithKey (\_ x -> f x) k m
 
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
-adjustWithKey f k m = go 0# m
+adjustWithKey f !k m = go 0# m
  where
   go _ (Leaf k' v)
     | k == k' = Leaf k (f k v)
@@ -423,14 +424,14 @@ adjustWithKey f k m = go 0# m
          in Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
-update f = updateWithKey (\_ x -> f x)
+update f !k m = updateWithKey (\_ x -> f x) k m
 
 updateWithKey ::
   (Word64 -> a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
-updateWithKey f k = alter (\v -> v >>= f k) k
+updateWithKey f !k = alter (\v -> v >>= f k) k
 
 alter :: (Maybe a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
-alter f k m = case lookup k m of
+alter f !k m = case lookup k m of
   Nothing -> case f Nothing of
     Nothing -> m
     Just v -> insert k v m
@@ -508,10 +509,10 @@ unionWithKeyAtShift !shift f m1 m2 = case (m1, m2) of
      in collapse (BM newBm) newAry
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExists k v m = insertIfNotExistsAtShift 0# k v m
+insertIfNotExists !k v m = insertIfNotExistsAtShift 0# k v m
 
 insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExistsAtShift !shift k v m = case m of
+insertIfNotExistsAtShift !shift !k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'
@@ -525,7 +526,7 @@ insertIfNotExistsAtShift !shift k v m = case m of
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 fromList :: [(Word64, a)] -> Word64Map a
-fromList = Foldable.foldl' (\m (k, v) -> insert k v m) empty
+fromList = Foldable.foldl' (\m (!k, v) -> insert k v m) empty
 
 toList :: Word64Map a -> [(Word64, a)]
 toList (Leaf k v) = [(k, v)]

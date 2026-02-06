@@ -52,7 +52,7 @@ module Amt.Word64.Map
   , InvariantViolation (..)
   ) where
 
-import Control.Monad.ST (runST)
+import Control.Monad.ST (ST, runST)
 import Data.Bits hiding (bit, shift)
 import Data.Bits qualified as Bits
 import Data.Foldable qualified as Foldable
@@ -319,17 +319,7 @@ insert k v m = case m of
 insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
 insertUnsafe k v m = case m of
   Branch (BM 0) _ -> singleton k v
-  Leaf k' v'
-    | k == k' -> Leaf k v
-    | otherwise -> two 0# k v k' v'
-  branch@(Branch (BM bm) ary) ->
-    case index 0# k (BM bm) of
-      Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = insertAtShiftUnsafe (nextShift 0#) k v child
-         in updateAtUnsafe i newChild ary `seq` branch
-      Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+  _ -> runST (insertAtShiftUnsafe 0# k v m)
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
@@ -381,20 +371,21 @@ insertAtShift !s k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
--- | Only valid for internal nodes.
-insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+-- | Unsafe insert using in-place updates. Handles empty at the root.
+insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> ST s (Word64Map a)
 insertAtShiftUnsafe !s k v m = case m of
   Leaf k' v'
-    | k == k' -> Leaf k v
-    | otherwise -> two s k v k' v'
+    | k == k' -> pure (Leaf k v)
+    | otherwise -> pure (two s k v k' v')
   branch@(Branch (BM bm) ary) ->
     case index s k (BM bm) of
-      Index _ i Match ->
+      Index _ i Match -> do
         let child = indexSmallArray ary i
-            newChild = insertAtShiftUnsafe (nextShift s) k v child
-         in updateAtUnsafe i newChild ary `seq` branch
+        newChild <- insertAtShiftUnsafe (nextShift s) k v child
+        _ <- updateAtUnsafe i newChild ary
+        pure branch
       Index (BM bit) i NoMatch ->
-        Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+        pure (Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary))
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two !shift k1 v1 k2 v2 =
@@ -578,12 +569,11 @@ updateAt i a ary = runSmallArray $ do
   writeSmallArray mary i a
   return mary
 
-updateAtUnsafe :: Int -> a -> SmallArray a -> SmallArray a
-updateAtUnsafe i a ary =
-  runST $ do
-    mary <- unsafeThawSmallArray ary
-    writeSmallArray mary i a
-    unsafeFreezeSmallArray mary
+updateAtUnsafe :: Int -> a -> SmallArray a -> ST s (SmallArray a)
+updateAtUnsafe i a ary = do
+  mary <- unsafeThawSmallArray ary
+  writeSmallArray mary i a
+  unsafeFreezeSmallArray mary
 
 removeAt :: Int -> SmallArray a -> SmallArray a
 removeAt i ary = runSmallArray $ do

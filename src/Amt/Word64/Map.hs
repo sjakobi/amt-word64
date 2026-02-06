@@ -94,6 +94,9 @@ data InvariantViolation
 
 4. __Prefix consistency__: For any node at 'Shift' @s@, all keys in its
    subtree must share the same prefix for the bits more significant than @s@.
+
+5. __Empty only at root__: The canonical empty node may only appear at the
+   root. Internal nodes are never empty.
 -}
 data Word64Map a
   = Branch !Bitmap !(SmallArray (Word64Map a))
@@ -333,6 +336,12 @@ insert k v m = case m of
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
+-- | Unsafe insert that mutates arrays in-place under the hood.
+insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
+insertUnsafe k v m = case m of
+  Branch (BM 0) _ -> singleton k v
+  _ -> runST (insertAtShiftUnsafe 0# k v m)
+
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f = insertWithKey (\_ new old -> f new old)
 
@@ -382,6 +391,22 @@ insertAtShift !s k v m = case m of
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
+
+-- | Unsafe insert using in-place updates. Expects a non-empty root.
+insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> ST s (Word64Map a)
+insertAtShiftUnsafe !s k v m = case m of
+  Leaf k' v'
+    | k == k' -> pure (Leaf k v)
+    | otherwise -> pure (two s k v k' v')
+  branch@(Branch (BM bm) ary) ->
+    case index s k (BM bm) of
+      Index _ i Match -> do
+        let child = indexSmallArray ary i
+        newChild <- insertAtShiftUnsafe (nextShift s) k v child
+        _ <- updateAtUnsafe i newChild ary
+        pure branch
+      Index (BM bit) i NoMatch ->
+        pure (Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary))
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two !shift k1 v1 k2 v2 =
@@ -579,7 +604,7 @@ insertIfNotExistsAtShift !shift k v m = case m of
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 fromList :: [(Word64, a)] -> Word64Map a
-fromList = Foldable.foldl' (\m (k, v) -> insert k v m) empty
+fromList = Foldable.foldl' (\m (k, v) -> insertUnsafe k v m) empty
 
 toList :: Word64Map a -> [(Word64, a)]
 toList (Leaf k v) = [(k, v)]
@@ -600,6 +625,12 @@ updateAt i a ary = runSmallArray $ do
   copySmallArray mary 0 ary 0 n
   writeSmallArray mary i a
   return mary
+
+updateAtUnsafe :: Int -> a -> SmallArray a -> ST s (SmallArray a)
+updateAtUnsafe i a ary = do
+  mary <- unsafeThawSmallArray ary
+  writeSmallArray mary i a
+  unsafeFreezeSmallArray mary
 
 removeAt :: Int -> SmallArray a -> SmallArray a
 removeAt i ary = runSmallArray $ do

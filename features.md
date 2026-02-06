@@ -70,4 +70,4 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 - [x] **`Ord1`**: Implemented.
 - [x] **`Read1`**: Implemented.
 - [x] **`Show1`**: Implemented.
-- [ ] **Untested instances**: `NFData`, `Eq1`, `Ord1`, `Read1`, `Show1`.
+- [ ] **Untested instances**: `NFData`.

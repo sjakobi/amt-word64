@@ -56,6 +56,12 @@ import Amt.Word64.Map
   )
 import Data.Bits qualified as Bits
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
+import Data.Functor.Classes
+  ( Eq1 (liftEq)
+  , Ord1 (liftCompare)
+  , Read1 (liftReadPrec)
+  , Show1 (liftShowsPrec)
+  )
 import Data.List qualified as L
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
@@ -77,6 +83,7 @@ import Test.QuickCheck.Classes.Base
   )
 import Test.Tasty
 import Test.Tasty.QuickCheck
+import Text.Read (readListPrec, readPrec, readPrec_to_S)
 import Prelude hiding (filter, lookup, map, null)
 
 newtype K = K Word64
@@ -361,6 +368,13 @@ tests =
         [ testProperty "gmapQi roundtrip" prop_data_gmapQi
         , testProperty "toConstr is fromList" prop_data_toConstr
         ]
+    , testGroup
+        "Eq1/Ord1/Show1/Read1"
+        [ testProperty "Eq1 liftEq matches Eq" prop_eq1_liftEq
+        , testProperty "Ord1 liftCompare matches Ord" prop_ord1_liftCompare
+        , testProperty "Show1 liftShowsPrec matches Show" prop_show1_matches_show
+        , testProperty "Read1 liftReadPrec roundtrip" prop_read1_roundtrip
+        ]
     ]
 
 instanceTests :: TestTree
@@ -404,6 +418,32 @@ prop_data_toConstr xs =
   let m = fromKList xs
       dt = dataTypeOf m
    in property $ Just (toConstr m) == listToMaybe (dataTypeConstrs dt)
+
+prop_eq1_liftEq :: [(K, Int)] -> [(K, Int)] -> Property
+prop_eq1_liftEq xs ys =
+  let m1 = fromKList xs
+      m2 = fromKList ys
+   in property $ liftEq (==) m1 m2 == (m1 == m2)
+
+prop_ord1_liftCompare :: [(K, Int)] -> [(K, Int)] -> Property
+prop_ord1_liftCompare xs ys =
+  let m1 = fromKList xs
+      m2 = fromKList ys
+   in property $ liftCompare compare m1 m2 == compare m1 m2
+
+prop_show1_matches_show :: [(K, Int)] -> Property
+prop_show1_matches_show xs =
+  let m = fromKList xs
+      s1 = liftShowsPrec showsPrec showList 0 m ""
+      s2 = showsPrec 0 m ""
+   in property $ s1 == s2
+
+prop_read1_roundtrip :: [(K, Int)] -> Property
+prop_read1_roundtrip xs =
+  let m = fromKList xs
+      s = showsPrec 0 m ""
+      parses = readPrec_to_S (liftReadPrec readPrec readListPrec) 0 s
+   in property $ any ((== m) . fst) parses
 
 prop_singleton_model :: K -> Int -> Property
 prop_singleton_model k v =

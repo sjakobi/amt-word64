@@ -173,7 +173,7 @@ instance Show1 Word64Map where
       . showListWith showPair (toList m)
    where
     showPair (k, v) =
-      showParen True (shows k . showString ", " . sp 0 v)
+      showParen True (shows k . showChar ',' . sp 0 v)
 
 instance Read1 Word64Map where
   liftReadPrec rp _ = parens $ do

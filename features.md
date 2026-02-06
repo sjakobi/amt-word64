@@ -52,3 +52,21 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 - [ ] **`split`**: Not planned.
 - [ ] **`splitLookup`**: Not planned.
 - [x] **`isSubmapOf` / `isSubmapOfBy`**: Implemented.
+
+## Instances
+- [x] **`Eq`**: Implemented.
+- [ ] **`Ord`**: Not yet implemented.
+- [ ] **`Read`**: Not yet implemented.
+- [x] **`Show`**: Implemented.
+- [x] **`Functor`**: Implemented.
+- [x] **`Foldable`**: Implemented.
+- [x] **`Traversable`**: Implemented (existing).
+- [x] **`Semigroup`**: Implemented.
+- [ ] **`Monoid`**: Not yet implemented.
+- [ ] **`NFData`**: Not yet implemented.
+- [ ] **`Data`**: Not yet implemented.
+- [ ] **`IsList`**: Not yet implemented.
+- [ ] **`Eq1`**: Not yet implemented.
+- [ ] **`Ord1`**: Not yet implemented.
+- [ ] **`Read1`**: Not yet implemented.
+- [ ] **`Show1`**: Not yet implemented.

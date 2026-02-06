@@ -63,11 +63,10 @@ This document tracks the features typically found in GHC's `Word64Map` API and c
 - [x] **`Traversable`**: Implemented (existing).
 - [x] **`Semigroup`**: Implemented.
 - [x] **`Monoid`**: Implemented.
-- [x] **`NFData`**: Implemented.
+- [x] **`NFData`**: Implemented, untested.
 - [x] **`Data`**: Implemented.
 - [x] **`IsList`**: Implemented.
 - [x] **`Eq1`**: Implemented.
 - [x] **`Ord1`**: Implemented.
 - [x] **`Read1`**: Implemented.
 - [x] **`Show1`**: Implemented.
-- [ ] **Untested instances**: `NFData`.

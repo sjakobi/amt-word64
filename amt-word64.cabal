@@ -59,7 +59,10 @@ library
     import:           warnings
 
     -- Modules exported by the library.
-    exposed-modules:  Amt.Word64.Map
+    exposed-modules:
+        Amt.Word64.Map,
+        Amt.Word64.Map.Lazy,
+        Amt.Word64.Map.Internal
 
     -- Modules included in this library but not exported.
     -- other-modules:

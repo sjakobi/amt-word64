@@ -1,0 +1,54 @@
+module Amt.Word64.Map.Lazy
+  ( Word64Map
+  , empty
+  , singleton
+  , null
+  , size
+  , insert
+  , insertWith
+  , insertWithKey
+  , insertIfNotExists
+  , delete
+  , adjust
+  , adjustWithKey
+  , update
+  , updateWithKey
+  , alter
+  , lookup
+  , member
+  , notMember
+  , findWithDefault
+  , map
+  , mapWithKey
+  , union
+  , unionWith
+  , unionWithKey
+  , mergeWithKey
+  , difference
+  , differenceWith
+  , intersection
+  , intersectionWith
+  , intersectionWithKey
+  , filter
+  , filterWithKey
+  , partition
+  , partitionWithKey
+  , mapMaybe
+  , mapMaybeWithKey
+  , mapEither
+  , mapEitherWithKey
+  , isSubmapOf
+  , isSubmapOfBy
+  , fromList
+  , toList
+  , elems
+  , keys
+  , assocs
+  , foldrWithKey
+  , foldlWithKey'
+  , valid
+  , InvariantViolation (..)
+  ) where
+
+import Amt.Word64.Map.Internal
+import Prelude hiding (filter, lookup, map, null)

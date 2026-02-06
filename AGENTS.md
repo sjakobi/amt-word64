@@ -138,6 +138,10 @@ When a task depends on PR review comments, the fastest path is:
     gh pr view <pr-number> --comments --json reviews,comments,files
     ```
 
+Note: When posting comments with `gh pr comment -b`, wrap the body in single
+quotes or use a quoted heredoc (`<<'EOF'`) to avoid shell interpretation of
+backticks.
+
 Note: `cabal.project.local` is expected to be untracked when enabling Core dumps.
 
 ### Useful Commands for Analysis

@@ -1033,23 +1033,17 @@ mapEitherWithKey f m = go m
     Right c -> (empty, Leaf k c)
   go (Branch (BM 0) _) = (empty, empty)
   go (Branch (BM bm) ary) =
-    let (lBm, lAry, rBm, rAry) = mapEitherBranch bm ary
+    let (lBm, lAry, rBm, rAry) = runST (mapEitherBranches bm ary)
         l = collapse (BM lBm) lAry
         r = collapse (BM rBm) rAry
      in (l, r)
 
-  mapEitherBranch ::
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    (Word64, SmallArray (Word64Map b), Word64, SmallArray (Word64Map c))
-  mapEitherBranch bm ary = runST (goArray bm ary)
-
-  goArray ::
+  mapEitherBranches ::
     forall s.
     Word64 ->
     SmallArray (Word64Map a) ->
     ST s (Word64, SmallArray (Word64Map b), Word64, SmallArray (Word64Map c))
-  goArray bm ary = do
+  mapEitherBranches bm ary = do
     let n = sizeofSmallArray ary
     maryL <- newSmallArray n (empty :: Word64Map b)
     maryR <- newSmallArray n (empty :: Word64Map c)

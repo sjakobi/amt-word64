@@ -79,7 +79,7 @@ import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
 import GHC.Exts qualified as Exts
 import GHC.Word (Word64 (W64#))
-import Text.Read (Lexeme (Ident, Punc), lexP, parens, readPrec, (+++))
+import Text.Read (Lexeme (Ident, Punc), ReadPrec, lexP, parens, readPrec, (+++))
 import Text.Show (showListWith)
 import Prelude hiding (filter, lookup, map, null)
 

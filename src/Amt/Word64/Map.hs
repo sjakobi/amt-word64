@@ -71,6 +71,7 @@ import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts (Int (I#), Int#, Word64#, eqWord64#, (+#), (>=#))
 import GHC.Word (Word64 (W64#))
+import Text.Read (Lexeme (Ident), lexP, parens, readListPrecDefault, readPrec)
 import Prelude hiding (filter, lookup, map, null)
 
 data InvariantViolation
@@ -124,6 +125,13 @@ instance Eq a => Eq (Word64Map a) where
 
 instance Ord a => Ord (Word64Map a) where
   compare m1 m2 = compare (toList m1) (toList m2)
+
+instance Read a => Read (Word64Map a) where
+  readPrec = parens $ do
+    Ident "fromList" <- lexP
+    xs <- readPrec
+    pure (fromList xs)
+  readListPrec = readListPrecDefault
 
 instance Foldable Word64Map where
   foldMap f (Leaf _ v) = f v

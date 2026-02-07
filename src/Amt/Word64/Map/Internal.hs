@@ -3,6 +3,52 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
+{- | = Navigating an array-mapped trie (AMT)
+
+'Word64Map' is a 64-way array-mapped trie keyed by 'Word64'.
+
+> data Word64Map a
+>   = Branch !Bitmap !(SmallArray (Word64Map a))
+>   | Leaf !Word64 a
+
+A /slot/ is the 6-bit slice of a key used at one level. Navigation consumes the
+key from least-significant bits upward. At a node with shift @s@, the slot is:
+
+> slot = (k `unsafeShiftR` shiftToInt s) .&. subkeyMask
+
+The slot is in the range 0-63. A 'Branch' stores a 'Bitmap' with the slot bit
+set when a child exists, and the children are packed densely in a
+'SmallArray' ordered by increasing slot.
+
+'index' computes both the bit and compact array index for a slot. It first
+derives the slot, then:
+
+> bit = 1 `unsafeShiftL` slot
+> arrayIndex = popCount (bm .&. (bit - 1))
+
+so the array index counts the set bits in the bitmap below the slot. Use
+'indexMatch' to skip the 'popCount' when the slot bit is absent. Advance to the
+next level with 'nextShift' (adds 'bitsPerLevel').
+
+Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the slots are:
+
+- shift 0: slot = 0x2f (47)
+- shift 6: slot = 0x37 (55)
+- shift 12: slot = 0x3c (60)
+- shift 18: slot = 0x2a (42)
+- shift 24: slot = 0x09 (9)
+- shift 30: slot = 0x1e (30)
+- shift 36: slot = 0x16 (22)
+- shift 42: slot = 0x11 (17)
+- shift 48: slot = 0x23 (35)
+- shift 54: slot = 0x04 (4)
+- shift 60: slot = 0x00 (0)
+
+Lookup starts at shift 0 and uses 'index' to select the child. If the bitmap
+does not contain the slot bit, the key is absent; otherwise the compact array
+index returned by 'index' selects the child, and the search continues at the
+next shift until a 'Leaf' matches the key.
+-}
 module Amt.Word64.Map.Internal
   ( Word64Map (..)
   , Bitmap (..)
@@ -268,41 +314,8 @@ Construct with 'index' when the array index is needed regardless of presence.
 -}
 data Index = Index !Bitmap !Int !BitMatch
 
--- | Does the Bitmap contain the Word64 at the given Shift?
+-- | Does the Bitmap contain the slot for the Word64 at the given Shift?
 data BitMatch = NoMatch | Match
-
-{- | A /subkey/ is the 6-bit slice of a 'Word64' used at one trie level.
-
-Navigation consumes the key from least-significant bits upward. At a node with
-shift @s@, the subkey is:
-
-> subkey = (k `unsafeShiftR` shiftToInt s) .&. subkeyMask
-
-This subkey is the branch slot (0-63). The node 'Bitmap' has a bit at that slot
-when a child exists, and children are stored densely in the 'SmallArray' ordered
-by increasing slot. Use 'index' to compute both the bit mask and compact array
-index (or 'indexMatch' when you only need the array index on a hit). Advance to
-the next level with 'nextShift' (adds 'bitsPerLevel').
-
-Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the subkeys are:
-
-- shift 0: subkey = 0x2f (47)
-- shift 6: subkey = 0x37 (55)
-- shift 12: subkey = 0x3c (60)
-- shift 18: subkey = 0x2a (42)
-- shift 24: subkey = 0x09 (9)
-- shift 30: subkey = 0x1e (30)
-- shift 36: subkey = 0x16 (22)
-- shift 42: subkey = 0x11 (17)
-- shift 48: subkey = 0x23 (35)
-- shift 54: subkey = 0x04 (4)
-- shift 60: subkey = 0x00 (0)
-
-Lookup starts at shift 0 and uses 'index' to select the child. If the bitmap
-does not contain the subkey bit, the key is absent; otherwise the compact array
-index returned by 'index' selects the child, and the search continues at the
-next shift until a 'Leaf' matches the key.
--}
 
 -- | Unlifted shift counter in multiples of 'bitsPerLevel'.
 type Shift = Int#
@@ -312,7 +325,7 @@ bitsPerLevel :: Int
 bitsPerLevel = 6
 {-# INLINE bitsPerLevel #-}
 
--- | Mask for extracting the subkey at a shift.
+-- | Mask for extracting the slot at a shift.
 subkeyMask :: Word64
 subkeyMask = (1 `unsafeShiftL` bitsPerLevel) - 1
 {-# INLINE subkeyMask #-}
@@ -406,27 +419,29 @@ validSubtrees shift prefix bm ary
             bits
             children
 
-{- | Compute the bitmap bit for @k@ at @shift@ and return the 'Index'.
+{- | Compute the bitmap bit for the slot of @k@ at @shift@ and return the 'Index'.
 
-Use this when the array index is needed regardless of presence.
+The slot is derived by shifting and masking the key, and the compact array index
+is computed by counting bitmap bits below that slot. Use this when the array
+index is needed regardless of presence.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
-      bit = 1 `unsafeShiftL` ix
+  let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
+      bit = 1 `unsafeShiftL` slot
       i = popCount (bm .&. (bit - 1))
       match = if bm .&. bit == 0 then NoMatch else Match
    in Index (BM bit) i match
 {-# INLINE index #-}
 
-{- | Like 'index', but only returns the array index when the bit is present.
+{- | Like 'index', but only returns the array index when the slot bit is present.
 
 This avoids a 'popCount' when the lookup misses.
 -}
 indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
 indexMatch shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
-      bit = 1 `unsafeShiftL` ix
+  let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
+      bit = 1 `unsafeShiftL` slot
    in if bm .&. bit == 0
         then Nothing
         else Just (popCount (bm .&. (bit - 1)))
@@ -588,19 +603,19 @@ insertAtShiftUnsafe s !k v m = case m of
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two shift !k1 v1 !k2 v2 =
-  let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
-      idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
-   in if idx1 /= idx2
+  let slot1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
+      slot2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
+   in if slot1 /= slot2
         then
-          let bm = Bits.bit idx1 .|. Bits.bit idx2
+          let bm = Bits.bit slot1 .|. Bits.bit slot2
               ary =
-                if idx1 < idx2
+                if slot1 < slot2
                   then smallArrayFromList [Leaf k1 v1, Leaf k2 v2]
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
            in Branch (BM bm) ary
         else
           let child = two (nextShift shift) k1 v1 k2 v2
-              bm = Bits.bit idx1
+              bm = Bits.bit slot1
            in Branch (BM bm) (smallArrayFromList [child])
 
 delete :: Word64 -> Word64Map a -> Word64Map a

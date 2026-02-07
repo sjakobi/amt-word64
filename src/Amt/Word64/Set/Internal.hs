@@ -722,10 +722,10 @@ partition f m = go m
     step bm 0 0 0 0 0
 
 map :: (Word64 -> Word64) -> Word64Set -> Word64Set
-map f = go empty
+map f = map_ empty
  where
-  go !acc (Leaf k) = insertUnsafe (f k) acc
-  go !acc (Branch _ ary) = Foldable.foldl' go acc ary
+  map_ !acc (Leaf k) = insertUnsafe (f k) acc
+  map_ !acc (Branch _ ary) = Foldable.foldl' map_ acc ary
 
 {- | Compatibility with GHC's Word64Set. Monotonicity does not make this
 faster than 'map' in this implementation.

@@ -72,6 +72,7 @@ Example: `CABAL_DIR=/tmp/cabal cabal build`
 10. **Commit Author**: Use `Codex <codex@example.com>` for the commit
    author identity unless instructed otherwise.
 11. **Core Dumps**: `cabal.project.local` is typically created from `cabal.project.local.dump-code` to enable Core/Code-Prep dumps. It is expected to remain untracked; do not add it to git unless explicitly requested.
+12. **PR Reviews**: Never mark review comments/threads as resolved; Simon will do this once satisfied.
 
 ## Key Development Patterns
 

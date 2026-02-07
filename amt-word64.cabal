@@ -64,11 +64,11 @@ library
         Amt.Word64.Map.Lazy,
         Amt.Word64.Map.Internal,
         Amt.Word64.Set,
-        Amt.Word64.Set.Lazy,
         Amt.Word64.Set.Internal
 
     -- Modules included in this library but not exported.
-    -- other-modules:
+    other-modules:
+        Amt.Word64.Internal.Bits
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

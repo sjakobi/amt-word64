@@ -5,7 +5,7 @@ module Word64SetTests
   , instanceTests
   ) where
 
-import Amt.Word64.Set.Lazy
+import Amt.Word64.Set
   ( Word64Set
   , alterF
   , delete
@@ -159,7 +159,7 @@ tests =
         ]
     , testGroup
         "elems"
-        [ testProperty "matches toList" prop_elems_model
+        [ testProperty "matches toList" prop_elems_toList
         ]
     , testGroup
         "null"
@@ -191,11 +191,11 @@ tests =
         ]
     , testGroup
         "foldr"
-        [ testProperty "visits all elements" prop_foldr_model
+        [ testProperty "visits all elements" prop_foldr_toList
         ]
     , testGroup
         "foldl'"
-        [ testProperty "visits all elements" prop_foldl_model
+        [ testProperty "visits all elements" prop_foldl_toList
         ]
     ]
 
@@ -393,8 +393,8 @@ prop_toList_model entries =
       ref = Set.fromList (L.map toWord64 entries)
    in toSortedList s === Set.toAscList ref
 
-prop_elems_model :: [K] -> Property
-prop_elems_model entries =
+prop_elems_toList :: [K] -> Property
+prop_elems_toList entries =
   let s = fromKList entries
    in L.sort (elems s) === L.sort (toList s)
 
@@ -447,12 +447,12 @@ prop_disjoint_model e1 e2 =
       disjointRef = Set.null (Set.intersection ref1 ref2)
    in disjoint s1 s2 === disjointRef
 
-prop_foldr_model :: [K] -> Property
-prop_foldr_model entries =
+prop_foldr_toList :: [K] -> Property
+prop_foldr_toList entries =
   let s = fromKList entries
    in foldr (:) [] s === toList s
 
-prop_foldl_model :: [K] -> Property
-prop_foldl_model entries =
+prop_foldl_toList :: [K] -> Property
+prop_foldl_toList entries =
   let s = fromKList entries
    in foldl' (flip (:)) [] s === L.reverse (toList s)

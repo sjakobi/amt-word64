@@ -4,6 +4,7 @@
 
 The goal is achieve better performance than GHC's `Word64Map` (and `Word64Set`).
 
+(This is also my first time experimenting with AI agents. :) )
 
 
 ## Development

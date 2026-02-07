@@ -1232,12 +1232,12 @@ mapMaybeWithKey f m = mapMaybeNode m
 
   mapMaybeBranch ::
     Word64 -> SmallArray (Word64Map a) -> (Word64, SmallArray (Word64Map b))
-  mapMaybeBranch bm ary = runST (goArray bm ary)
+  mapMaybeBranch bm ary = runST (mapMaybeBranchArray bm ary)
 
-  goArray ::
+  mapMaybeBranchArray ::
     forall s.
     Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map b))
-  goArray bm ary = do
+  mapMaybeBranchArray bm ary = do
     let n = sizeofSmallArray ary
     mary <- newSmallArray n empty
     let step !w !i !j !newBm

@@ -1109,10 +1109,10 @@ filter :: (a -> Bool) -> Word64Map a -> Word64Map a
 filter f = filterWithKey (\_ x -> f x)
 
 filterWithKey :: forall a. (Word64 -> a -> Bool) -> Word64Map a -> Word64Map a
-filterWithKey f = go
+filterWithKey f = filterNode
  where
-  go (Leaf k v) = if f k v then Leaf k v else empty
-  go (Branch (BM bm) ary)
+  filterNode (Leaf k v) = if f k v then Leaf k v else empty
+  filterNode (Branch (BM bm) ary)
     | bm == 0 = empty
     | otherwise =
         let (newBm, newAry) = runST (goArray bm ary)
@@ -1133,7 +1133,7 @@ filterWithKey f = go
                   pure (newBm, newAry)
           | otherwise =
               let bit = lowBit w
-                  child = go (indexSmallArray ary i)
+                  child = filterNode (indexSmallArray ary i)
                   w' = clearLowBit w
                in if null child
                     then step w' (i + 1) j newBm

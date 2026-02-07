@@ -192,4 +192,4 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - Module layout: `Amt.Word64.Map.Internal` contains the implementation and exports internal types/constructors; `Amt.Word64.Map.Lazy` re-exports the public API; `Amt.Word64.Map` re-exports `Amt.Word64.Map.Lazy`. Tests import `Amt.Word64.Map.Lazy`, and can import `Amt.Word64.Map.Internal` qualified when needed.
 - Before building a new PR on top of `master`, check what was just merged (e.g., `git log origin/master..branch`) to avoid cherry-picking already-merged commits and unnecessary conflicts.
 - To find line-level review comments quickly, use `gh api repos/<owner>/<repo>/pulls/<pr>/comments`; review bodies can be empty, so rely on the comments API for actionable items.
-- For PR replies, `gh pr comment <number> --body "<text>"` is the quick path; line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.
+- For PR replies, prefer `--body-file` (or a quoted heredoc piped to `--body-file -`) so newlines render correctly. Line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.

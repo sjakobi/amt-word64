@@ -1053,10 +1053,10 @@ intersectionWithKey f m1_ m2_ = intersectAtShift 0# m1_ m2_
     Nothing -> empty
     Just v1 -> Leaf k2 (f k2 v1 v2)
   intersectAtShift shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    let (newBm, newAry) = runST (goArray shift bm1 ary1 bm2 ary2)
+    let (newBm, newAry) = runST (intersectBranchesArray shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
-  goArray ::
+  intersectBranchesArray ::
     forall s.
     Shift ->
     Word64 ->
@@ -1064,7 +1064,7 @@ intersectionWithKey f m1_ m2_ = intersectAtShift 0# m1_ m2_
     Word64 ->
     SmallArray (Word64Map b) ->
     ST s (Word64, SmallArray (Word64Map c))
-  goArray shift bm1 ary1 bm2 ary2 = do
+  intersectBranchesArray shift bm1 ary1 bm2 ary2 = do
     let commonBm = bm1 .&. bm2
         unionBm = bm1 .|. bm2
         n = popCount commonBm

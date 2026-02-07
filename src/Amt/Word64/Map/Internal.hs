@@ -1147,13 +1147,13 @@ partition f = partitionWithKey (\_ x -> f x)
 
 partitionWithKey ::
   forall a. (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
-partitionWithKey f m = go m
+partitionWithKey f m = partitionNode m
  where
-  go (Leaf k v)
+  partitionNode (Leaf k v)
     | f k v = (Leaf k v, empty)
     | otherwise = (empty, Leaf k v)
-  go (Branch (BM 0) _) = (empty, empty)
-  go (Branch (BM bm) ary) =
+  partitionNode (Branch (BM 0) _) = (empty, empty)
+  partitionNode (Branch (BM bm) ary) =
     let (lBm, lAry, rBm, rAry) = partitionBranch bm ary
         l = collapse (BM lBm) lAry
         r = collapse (BM rBm) rAry
@@ -1195,7 +1195,7 @@ partitionWithKey f m = go m
           | otherwise =
               let bit = lowBit w
                   child = indexSmallArray ary i
-                  (lChild, rChild) = go child
+                  (lChild, rChild) = partitionNode child
                   w' = clearLowBit w
                   (jl', lBm') =
                     if null lChild

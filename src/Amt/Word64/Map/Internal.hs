@@ -404,15 +404,15 @@ size (Leaf _ _) = 1
 size (Branch _ ary) = Foldable.sum (fmap size ary)
 
 lookup :: Word64 -> Word64Map a -> Maybe a
-lookup !k m = case k of
-  W64# ww -> lookupAtShift# 0# ww m
+lookup (W64# ww) m = lookupAtShift# 0# ww m
+{-# INLINE lookup #-}
 
 lookupAtShift :: Shift -> Word64 -> Word64Map a -> Maybe a
-lookupAtShift shift !k = case k of
-  W64# ww -> lookupAtShift# shift ww
+lookupAtShift shift (W64# ww) m = lookupAtShift# shift ww m
+{-# INLINE lookupAtShift #-}
 
 lookupAtShift# :: Shift -> Word64# -> Word64Map a -> Maybe a
-lookupAtShift# shift k = lookup_ shift
+lookupAtShift# shift k m = lookup_ shift m
  where
   lookup_ _ (Leaf k' v) =
     case k' of

@@ -1220,13 +1220,13 @@ mapMaybe f = mapMaybeWithKey (\_ x -> f x)
 
 mapMaybeWithKey ::
   forall a b. (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b
-mapMaybeWithKey f m = go m
+mapMaybeWithKey f m = mapMaybeNode m
  where
-  go (Leaf k v) = case f k v of
+  mapMaybeNode (Leaf k v) = case f k v of
     Nothing -> empty
     Just v' -> Leaf k v'
-  go (Branch (BM 0) _) = empty
-  go (Branch (BM bm) ary) =
+  mapMaybeNode (Branch (BM 0) _) = empty
+  mapMaybeNode (Branch (BM bm) ary) =
     let (newBm, newAry) = mapMaybeBranch bm ary
      in collapse (BM newBm) newAry
 
@@ -1251,7 +1251,7 @@ mapMaybeWithKey f m = go m
           | otherwise =
               let bit = lowBit w
                   child = indexSmallArray ary i
-                  child' = go child
+                  child' = mapMaybeNode child
                   w' = clearLowBit w
                in if null child'
                     then step w' (i + 1) j newBm

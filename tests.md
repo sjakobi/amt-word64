@@ -20,3 +20,15 @@
 - Property and unit tests: `vector-tests-O0` and `vector-tests-O2` run the same Tasty program at two optimization levels to catch rule-related issues; includes unit tests and QuickCheck properties across boxed, primitive, storable, strict, and unboxed vectors plus bundle/move/specialization suites.
 - Doctests: `vector-doctest` runs documentation examples via `doctest` (`tests/doctests.hs`).
 - Inspection tests: `vector-inspection` uses `Test.Tasty.Inspection` (plugin-based Core/alloc/fusion checks) in `tests-inspect`.
+
+## amt-word64 suggestions
+- Model-based properties: compare against `Data.Map.Strict` for core ops (insert/delete/lookup/union/intersection/difference/map/mapMaybe/filter/partition/folds/toList/fromList).
+- Invariant checks: run `valid` after each operation sequence step, not just at the end.
+- Round-trips: `fromList . toList` idempotence; `fromListWith` matches reference semantics.
+- Algebraic laws: union/intersection/difference identities; map/mapWithKey identity and composition.
+- Key distribution edge cases: shared prefixes at deep levels, plus `0`, `maxBound`, and alternating bit patterns.
+- Shift progression coverage: keys designed to hit many levels (bits set at multiples of 6).
+- Strictness tests: key strictness, value strictness where applicable, and no accidental strictness for lazy paths.
+- Structural invariants after updates: no redundant branches, empty only at root, bitmap size matches array size, prefix consistency.
+- Regressions: explicit tests for `differenceWith` leaf handling and singleton interactions across combinators.
+- Performance/inspection (optional): allocation sanity for hot ops and bitmap scan behavior regressions.

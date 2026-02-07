@@ -271,8 +271,18 @@ data Index = Index !Bitmap !Int !BitMatch
 -- | Does the Bitmap contain the Word64 at the given Shift?
 data BitMatch = NoMatch | Match
 
--- | Unlifted shift counter in multiples of 6 bits.
+-- | Unlifted shift counter in multiples of 'bitsPerSubkey'.
 type Shift = Int#
+
+-- | Number of bits consumed per level.
+bitsPerSubkey :: Int
+bitsPerSubkey = 6
+{-# INLINE bitsPerSubkey #-}
+
+-- | Mask for extracting the subkey at a shift.
+subkeyMask :: Word64
+subkeyMask = (1 `unsafeShiftL` bitsPerSubkey) - 1
+{-# INLINE subkeyMask #-}
 
 -- | Boxed shift value for diagnostics and 'InvariantViolation' payloads.
 newtype ShiftBox = ShiftBox Int
@@ -283,7 +293,8 @@ shiftToInt s = I# s
 {-# INLINE shiftToInt #-}
 
 nextShift :: Shift -> Shift
-nextShift s = s +# 6#
+nextShift s = case bitsPerSubkey of
+  I# b -> s +# b
 {-# INLINE nextShift #-}
 
 shiftGE64 :: Shift -> Bool
@@ -368,7 +379,7 @@ Use this when the array index is needed regardless of presence.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
+  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
       bit = 1 `unsafeShiftL` ix
       i = popCount (bm .&. (bit - 1))
       match = if bm .&. bit == 0 then NoMatch else Match
@@ -381,7 +392,7 @@ This avoids a 'popCount' when the lookup misses.
 -}
 indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
 indexMatch shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
+  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
       bit = 1 `unsafeShiftL` ix
    in if bm .&. bit == 0
         then Nothing
@@ -544,8 +555,8 @@ insertAtShiftUnsafe s !k v m = case m of
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
 two shift !k1 v1 !k2 v2 =
-  let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
-      idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. 0x3f)
+  let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
+      idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
    in if idx1 /= idx2
         then
           let bm = Bits.bit idx1 .|. Bits.bit idx2

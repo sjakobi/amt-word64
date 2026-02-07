@@ -1163,14 +1163,14 @@ partitionWithKey f m = partitionNode m
     Word64 ->
     SmallArray (Word64Map a) ->
     (Word64, SmallArray (Word64Map a), Word64, SmallArray (Word64Map a))
-  partitionBranch bm ary = runST (goArray bm ary)
+  partitionBranch bm ary = runST (partitionBranchArray bm ary)
 
-  goArray ::
+  partitionBranchArray ::
     forall s.
     Word64 ->
     SmallArray (Word64Map a) ->
     ST s (Word64, SmallArray (Word64Map a), Word64, SmallArray (Word64Map a))
-  goArray bm ary = do
+  partitionBranchArray bm ary = do
     let n = sizeofSmallArray ary
     maryL <- newSmallArray n (empty :: Word64Map b)
     maryR <- newSmallArray n (empty :: Word64Map c)

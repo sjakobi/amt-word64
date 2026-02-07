@@ -424,6 +424,7 @@ lookupAtShift# shift k m = lookup_ shift m
     case indexMatch s (W64# k) (BM bm) of
       Nothing -> Nothing
       Just i -> lookup_ (nextShift s) (indexSmallArray ary i)
+{-# INLINE lookupAtShift# #-}
 
 member :: Word64 -> Word64Map a -> Bool
 member !k m = case lookup k m of

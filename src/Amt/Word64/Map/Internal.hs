@@ -271,17 +271,50 @@ data Index = Index !Bitmap !Int !BitMatch
 -- | Does the Bitmap contain the Word64 at the given Shift?
 data BitMatch = NoMatch | Match
 
--- | Unlifted shift counter in multiples of 'bitsPerSubkey'.
+{- | A /subkey/ is the 6-bit slice of a 'Word64' used at one trie level.
+
+Navigation consumes the key from least-significant bits upward. At a node with
+shift @s@, the subkey is:
+
+> subkey = (k `unsafeShiftR` shiftToInt s) .&. subkeyMask
+
+This subkey is the branch slot (0-63). The node 'Bitmap' has a bit at that slot
+when a child exists, and children are stored densely in the 'SmallArray' ordered
+by increasing slot. Use 'index' to compute both the bit mask and compact array
+index (or 'indexMatch' when you only need the array index on a hit). Advance to
+the next level with 'nextShift' (adds 'bitsPerLevel').
+
+Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the subkeys are:
+
+- shift 0: subkey = 0x2f (47)
+- shift 6: subkey = 0x37 (55)
+- shift 12: subkey = 0x3c (60)
+- shift 18: subkey = 0x2a (42)
+- shift 24: subkey = 0x09 (9)
+- shift 30: subkey = 0x1e (30)
+- shift 36: subkey = 0x16 (22)
+- shift 42: subkey = 0x11 (17)
+- shift 48: subkey = 0x23 (35)
+- shift 54: subkey = 0x04 (4)
+- shift 60: subkey = 0x00 (0)
+
+Lookup starts at shift 0 and uses 'index' to select the child. If the bitmap
+does not contain the subkey bit, the key is absent; otherwise the compact array
+index returned by 'index' selects the child, and the search continues at the
+next shift until a 'Leaf' matches the key.
+-}
+
+-- | Unlifted shift counter in multiples of 'bitsPerLevel'.
 type Shift = Int#
 
 -- | Number of bits consumed per level.
-bitsPerSubkey :: Int
-bitsPerSubkey = 6
-{-# INLINE bitsPerSubkey #-}
+bitsPerLevel :: Int
+bitsPerLevel = 6
+{-# INLINE bitsPerLevel #-}
 
 -- | Mask for extracting the subkey at a shift.
 subkeyMask :: Word64
-subkeyMask = (1 `unsafeShiftL` bitsPerSubkey) - 1
+subkeyMask = (1 `unsafeShiftL` bitsPerLevel) - 1
 {-# INLINE subkeyMask #-}
 
 -- | Boxed shift value for diagnostics and 'InvariantViolation' payloads.
@@ -293,7 +326,7 @@ shiftToInt s = I# s
 {-# INLINE shiftToInt #-}
 
 nextShift :: Shift -> Shift
-nextShift s = case bitsPerSubkey of
+nextShift s = case bitsPerLevel of
   I# b -> s +# b
 {-# INLINE nextShift #-}
 

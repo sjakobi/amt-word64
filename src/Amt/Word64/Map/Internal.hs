@@ -572,20 +572,27 @@ deleteAtShift shift !k m = del shift m
  where
   del _ (Leaf k' _) | k == k' = empty
   del _ leaf@(Leaf _ _) = leaf
-  del s (Branch (BM bm) ary) =
+  del s branch@(Branch (BM bm) ary) =
     case index s k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
+      Index _ _ NoMatch -> branch
       Index (BM bit) i Match ->
-        let child = indexSmallArray ary i
-            newChild = del (nextShift s) child
-         in if null newChild
-              then
-                let newBm = bm .&. complement bit
-                    newAry = removeAt i ary
-                 in collapse (BM newBm) newAry
-              else
-                let newAry = updateAt i newChild ary
-                 in collapse (BM bm) newAry
+        case indexSmallArray## ary i of
+          (# child0 #) ->
+            -- TODO: Verify whether array elements are always in WHNF so we can
+            -- drop the bang on child/newChild here.
+            let !child = child0
+                !newChild = del (nextShift s) child
+             in if sameMap child newChild
+                  then branch
+                  else
+                    if null newChild
+                      then
+                        let newBm = bm .&. complement bit
+                            newAry = removeAt i ary
+                         in collapse (BM newBm) newAry
+                      else
+                        let newAry = updateAt i newChild ary
+                         in collapse (BM bm) newAry
 
 adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f !k m = adjustWithKey (\_ x -> f x) k m

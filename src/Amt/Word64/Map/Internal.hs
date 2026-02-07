@@ -1339,15 +1339,15 @@ isSubmapOfBy ::
   Word64Map a ->
   Word64Map b ->
   Bool
-isSubmapOfBy f m1_ m2_ = submapAtShift 0# m1_ m2_
+isSubmapOfBy f m1_ m2_ = submap 0# m1_ m2_
  where
-  submapAtShift _ (Branch (BM 0) _) _ = True
-  submapAtShift _ _ (Branch (BM 0) _) = False
-  submapAtShift shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  submap _ (Branch (BM 0) _) _ = True
+  submap _ _ (Branch (BM 0) _) = False
+  submap shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> False
     Just v2 -> f v1 v2
-  submapAtShift _ (Branch _ _) (Leaf _ _) = False
-  submapAtShift shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  submap _ (Branch _ _) (Leaf _ _) = False
+  submap shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     submapBranch (nextShift shift) bm1 ary1 bm2 ary2
 
   submapBranch ::
@@ -1370,7 +1370,7 @@ isSubmapOfBy f m1_ m2_ = submapAtShift 0# m1_ m2_
                 (True, True) ->
                   let c1 = indexSmallArray ary1 i1
                       c2 = indexSmallArray ary2 i2
-                   in if submapAtShift shift c1 c2
+                   in if submap shift c1 c2
                         then step w' (i1 + 1) (i2 + 1)
                         else False
                 (True, False) -> False

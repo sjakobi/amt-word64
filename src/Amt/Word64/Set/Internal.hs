@@ -728,6 +728,10 @@ map :: (Word64 -> Word64) -> Word64Set -> Word64Set
 map f = fromList . List.map f . toList
 
 mapMonotonic :: (Word64 -> Word64) -> Word64Set -> Word64Set
+
+{- | Compatibility with GHC's Word64Set. Monotonicity does not make this
+faster than 'map' in this implementation.
+-}
 mapMonotonic = map
 
 isSubsetOf :: Word64Set -> Word64Set -> Bool

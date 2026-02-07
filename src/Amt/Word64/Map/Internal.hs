@@ -412,18 +412,18 @@ lookupAtShift shift !k = case k of
   W64# ww -> lookupAtShift# shift ww
 
 lookupAtShift# :: Shift -> Word64# -> Word64Map a -> Maybe a
-lookupAtShift# shift k = go shift
+lookupAtShift# shift k = lookup_ shift
  where
-  go _ (Leaf k' v) =
+  lookup_ _ (Leaf k' v) =
     case k' of
       W64# k'# ->
         case eqWord64# k k'# of
           1# -> Just v
           _ -> Nothing
-  go s (Branch (BM bm) ary) =
+  lookup_ s (Branch (BM bm) ary) =
     case indexMatch s (W64# k) (BM bm) of
       Nothing -> Nothing
-      Just i -> go (nextShift s) (indexSmallArray ary i)
+      Just i -> lookup_ (nextShift s) (indexSmallArray ary i)
 
 member :: Word64 -> Word64Map a -> Bool
 member !k m = case lookup k m of

@@ -777,7 +777,7 @@ fromList :: [Word64] -> Word64Set
 fromList = Foldable.foldl' (\m !k -> insertUnsafe k m) empty
 
 toList :: Word64Set -> [Word64]
-toList s = build (\c n -> foldr c n s)
+toList = \s -> build (\c n -> foldr c n s)
 {-# INLINE toList #-}
 
 elems :: Word64Set -> [Word64]

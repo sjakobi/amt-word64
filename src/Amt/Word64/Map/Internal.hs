@@ -1042,17 +1042,17 @@ intersectionWithKey ::
   Word64Map a ->
   Word64Map b ->
   Word64Map c
-intersectionWithKey f m1_ m2_ = intersectAtShift 0# m1_ m2_
+intersectionWithKey f m1_ m2_ = inter 0# m1_ m2_
  where
-  intersectAtShift _ (Branch (BM 0) _) _ = empty
-  intersectAtShift _ _ (Branch (BM 0) _) = empty
-  intersectAtShift shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  inter _ (Branch (BM 0) _) _ = empty
+  inter _ _ (Branch (BM 0) _) = empty
+  inter shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> empty
     Just v2 -> Leaf k1 (f k1 v1 v2)
-  intersectAtShift shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
+  inter shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
     Nothing -> empty
     Just v1 -> Leaf k2 (f k2 v1 v2)
-  intersectAtShift shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  inter shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let (newBm, newAry) = runST (intersectBranchesArray shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
@@ -1096,7 +1096,7 @@ intersectionWithKey f m1_ m2_ = intersectAtShift 0# m1_ m2_
                       w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
-                          let child = intersectAtShift (nextShift shift) c1 c2
+                          let child = inter (nextShift shift) c1 c2
                            in if null child
                                 then step w' i1' i2' j newBm
                                 else do

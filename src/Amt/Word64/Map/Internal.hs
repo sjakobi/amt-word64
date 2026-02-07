@@ -586,17 +586,17 @@ adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f !k m = adjustWithKey (\_ x -> f x) k m
 
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
-adjustWithKey f !k m = adjustAtShift 0# m
+adjustWithKey f !k m = adj 0# m
  where
-  adjustAtShift _ (Leaf k' v)
+  adj _ (Leaf k' v)
     | k == k' = Leaf k (f k v)
     | otherwise = Leaf k' v
-  adjustAtShift shift (Branch (BM bm) ary) =
+  adj shift (Branch (BM bm) ary) =
     case index shift k (BM bm) of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = adjustAtShift (nextShift shift) child
+            newChild = adj (nextShift shift) child
          in Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a

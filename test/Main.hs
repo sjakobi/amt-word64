@@ -1,4 +1,6 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
@@ -82,6 +84,8 @@ import Test.Tasty.QuickCheck
 import Text.Read (readListPrec, readPrec, readPrec_to_S)
 import Prelude hiding (filter, lookup, map, null)
 
+type TestMap = Word64Map 6
+
 newtype K = K Word64
   deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
 
@@ -89,7 +93,7 @@ instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
 
-instance Arbitrary a => Arbitrary (Word64Map a) where
+instance Arbitrary a => Arbitrary (TestMap a) where
   arbitrary = fromKList <$> arbitrary
   shrink m = fromKList <$> shrink (toSortedList m)
 
@@ -99,7 +103,7 @@ toWord64 (K w) = w
 fromWord64 :: Word64 -> K
 fromWord64 = K
 
-fromKList :: [(K, a)] -> Word64Map a
+fromKList :: [(K, a)] -> TestMap a
 fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
 
 main :: IO ()
@@ -118,7 +122,7 @@ tests =
     "Word64Map tests"
     [ testGroup
         "empty"
-        [ testProperty "valid invariant" $ checkValid (empty @Int)
+        [ testProperty "valid invariant" $ checkValid (empty @6 @Int)
         ]
     , testGroup
         "singleton"
@@ -345,16 +349,16 @@ instanceTests :: TestTree
 instanceTests =
   testGroup
     "instance laws"
-    [ lawsToTestTree (eqLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (ordLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (showLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (showReadLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (monoidLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (functorLaws (Proxy :: Proxy Word64Map))
-    , lawsToTestTree (foldableLaws (Proxy :: Proxy Word64Map))
-    , lawsToTestTree (traversableLaws (Proxy :: Proxy Word64Map))
-    , lawsToTestTree (isListLaws (Proxy :: Proxy (Word64Map Int)))
+    [ lawsToTestTree (eqLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (ordLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (showLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (showReadLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (monoidLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (functorLaws (Proxy :: Proxy TestMap))
+    , lawsToTestTree (foldableLaws (Proxy :: Proxy TestMap))
+    , lawsToTestTree (traversableLaws (Proxy :: Proxy TestMap))
+    , lawsToTestTree (isListLaws (Proxy :: Proxy (TestMap Int)))
     , testGroup
         "Data"
         [ testProperty "gmapQi roundtrip" prop_data_gmapQi
@@ -369,7 +373,7 @@ instanceTests =
         ]
     ]
 
-toSortedList :: Word64Map a -> [(K, a)]
+toSortedList :: TestMap a -> [(K, a)]
 toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
 
 lawsToTestTree :: Laws -> TestTree
@@ -379,7 +383,7 @@ lawsToTestTree (Laws name props) =
     | (propName, prop) <- props
     ]
 
-checkValid :: Word64Map a -> Property
+checkValid :: TestMap a -> Property
 checkValid m = case valid m of
   Nothing -> property True
   Just err -> counterexample (show err) False

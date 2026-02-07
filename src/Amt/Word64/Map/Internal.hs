@@ -1,13 +1,25 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Amt.Word64.Map.Internal
   ( Word64Map (..)
   , Bitmap (..)
+  , BitmapConstraint
+  , BitmapWord
   , Index (..)
   , BitMatch (..)
+  , KnownSubkeyBits (..)
   , Shift
   , ShiftBox (..)
   , empty
@@ -82,7 +94,8 @@ import Data.Functor.Classes
   )
 import Data.Functor.Classes qualified as FunctorClasses
 import Data.Primitive.SmallArray
-import Data.Word (Word64)
+import Data.Proxy (Proxy (Proxy))
+import Data.Word (Word16, Word32, Word64)
 import GHC.Exts
   ( Int (I#)
   , Int#
@@ -94,6 +107,12 @@ import GHC.Exts
   , (>=#)
   )
 import GHC.Exts qualified as Exts
+import GHC.TypeLits
+  ( ErrorMessage (ShowType, Text, (:<>:))
+  , KnownNat
+  , Nat
+  , TypeError
+  )
 import GHC.Word (Word64 (W64#))
 import Text.Read (Lexeme (Ident), lexP, parens, readPrec)
 import Prelude hiding (filter, lookup, map, null)
@@ -133,21 +152,22 @@ data InvariantViolation
 5. __Empty only at root__: The canonical empty node may only appear at the
    root. Internal nodes are never empty.
 -}
-data Word64Map a
-  = Branch !Bitmap !(SmallArray (Word64Map a))
+data Word64Map (bits :: Nat) a
+  = Branch !(Bitmap bits) !(SmallArray (Word64Map bits a))
   | Leaf !Word64 a
 
-instance Functor Word64Map where
+instance Functor (Word64Map bits) where
   fmap f (Leaf k v) = Leaf k (f v)
   fmap f (Branch bm ary) = Branch bm (fmap (fmap f) ary)
 
-instance Show a => Show (Word64Map a) where
+instance Show a => Show (Word64Map bits a) where
   show m = "fromList " ++ show (toList m)
 
-instance Eq a => Eq (Word64Map a) where
+instance (Eq a, Eq (BitmapWord bits)) => Eq (Word64Map bits a) where
   m1 == m2 = eqMap m1 m2
 
-eqMap :: Eq a => Word64Map a -> Word64Map a -> Bool
+eqMap ::
+  (Eq a, Eq (BitmapWord bits)) => Word64Map bits a -> Word64Map bits a -> Bool
 eqMap m1 m2 = eqMap_ m1 m2
  where
   eqMap_ (Leaf k1 v1) (Leaf k2 v2) = k1 == k2 && v1 == v2
@@ -172,38 +192,38 @@ sameSmallArray (SmallArray a1#) (SmallArray a2#) =
   isTrue# (sameSmallArray# a1# a2#)
 {-# INLINE sameSmallArray #-}
 
-instance Ord a => Ord (Word64Map a) where
+instance (Ord a, Eq (BitmapWord bits)) => Ord (Word64Map bits a) where
   compare m1 m2 = compare (toList m1) (toList m2)
 
-instance Read a => Read (Word64Map a) where
+instance (BitmapConstraint bits, Read a) => Read (Word64Map bits a) where
   readPrec = parens $ do
     Ident "fromList" <- lexP
     xs <- readPrec
     pure (fromList xs)
 
-instance Exts.IsList (Word64Map a) where
-  type Item (Word64Map a) = (Word64, a)
+instance BitmapConstraint bits => Exts.IsList (Word64Map bits a) where
+  type Item (Word64Map bits a) = (Word64, a)
   fromList = Amt.Word64.Map.Internal.fromList
   toList = Amt.Word64.Map.Internal.toList
 
-instance Eq1 Word64Map where
+instance Eq (BitmapWord bits) => Eq1 (Word64Map bits) where
   liftEq f m1 m2 =
     FunctorClasses.liftEq (FunctorClasses.liftEq f) (toList m1) (toList m2)
 
-instance Ord1 Word64Map where
+instance Eq (BitmapWord bits) => Ord1 (Word64Map bits) where
   liftCompare f m1 m2 =
     FunctorClasses.liftCompare
       (FunctorClasses.liftCompare f)
       (toList m1)
       (toList m2)
 
-instance Show1 Word64Map where
+instance Show1 (Word64Map bits) where
   liftShowsPrec sp sl d =
     let showPair = FunctorClasses.liftShowsPrec sp sl
         showPairs = FunctorClasses.liftShowsPrec showPair (FunctorClasses.liftShowList sp sl)
      in showsUnaryWith showPairs "fromList" d . toList
 
-instance Read1 Word64Map where
+instance BitmapConstraint bits => Read1 (Word64Map bits) where
   liftReadPrec rp rlp = parens $ do
     Ident "fromList" <- lexP
     let readPair = FunctorClasses.liftReadPrec rp rlp
@@ -212,7 +232,7 @@ instance Read1 Word64Map where
     xs <- readPairs
     pure (fromList xs)
 
-instance Foldable Word64Map where
+instance Foldable (Word64Map bits) where
   foldMap f (Leaf _ v) = f v
   foldMap f (Branch _ ary) = Foldable.foldMap (foldMap f) ary
 
@@ -221,28 +241,29 @@ instance Foldable Word64Map where
 
   length = size
 
-  null = null
+  null (Leaf _ _) = False
+  null (Branch _ ary) = sizeofSmallArray ary == 0
 
-instance Traversable Word64Map where
+instance Traversable (Word64Map bits) where
   traverse f (Leaf k v) = Leaf k <$> f v
   traverse f (Branch bm ary) = Branch bm <$> traverse (traverse f) ary
 
-instance Semigroup (Word64Map a) where
+instance BitmapConstraint bits => Semigroup (Word64Map bits a) where
   (<>) = union
 
-instance Monoid (Word64Map a) where
+instance BitmapConstraint bits => Monoid (Word64Map bits a) where
   mempty = empty
   mappend = (<>)
 
-instance NFData1 Word64Map where
+instance NFData1 (Word64Map bits) where
   liftRnf f (Leaf _ v) = f v
   liftRnf f (Branch _ ary) =
     Foldable.foldr (\m acc -> liftRnf f m `seq` acc) () ary
 
-instance NFData a => NFData (Word64Map a) where
+instance NFData a => NFData (Word64Map bits a) where
   rnf = rnf1
 
-instance Data a => Data (Word64Map a) where
+instance (BitmapConstraint bits, KnownNat bits, Data a) => Data (Word64Map bits a) where
   gfoldl k z m = z fromList `k` toList m
   gunfold k z c
     | c == fromListConstr = k (z fromList)
@@ -257,8 +278,41 @@ word64MapDataType =
 fromListConstr :: Constr
 fromListConstr = mkConstr word64MapDataType "fromList" [] Prefix
 
-newtype Bitmap = BM Word64
-  deriving (Eq)
+type family BitmapWord (bits :: Nat) where
+  BitmapWord 4 = Word16
+  BitmapWord 5 = Word32
+  BitmapWord 6 = Word64
+  BitmapWord bits =
+    TypeError
+      ( Text "Unsupported bitmap size (bits per subkey): "
+          :<>: ShowType bits
+          :<>: Text ". Supported values are 4, 5, and 6."
+      )
+
+class KnownSubkeyBits (bits :: Nat) where
+  bitsPerSubkey :: Proxy bits -> Int
+
+instance KnownSubkeyBits 4 where
+  bitsPerSubkey _ = 4
+
+instance KnownSubkeyBits 5 where
+  bitsPerSubkey _ = 5
+
+instance KnownSubkeyBits 6 where
+  bitsPerSubkey _ = 6
+
+type BitmapConstraint bits =
+  ( KnownSubkeyBits bits
+  , FiniteBits (BitmapWord bits)
+  , Eq (BitmapWord bits)
+  , Num (BitmapWord bits)
+  , Integral (BitmapWord bits)
+  )
+
+newtype Bitmap (bits :: Nat) = BM (BitmapWord bits)
+
+instance Eq (BitmapWord bits) => Eq (Bitmap bits) where
+  BM a == BM b = a == b
 
 {- | Bitmap query result: bit mask for the current slot, compact array index,
 and whether the bit is present.
@@ -266,7 +320,7 @@ and whether the bit is present.
 The array index is the position in the compact 'SmallArray' for this slot.
 Construct with 'index' when the array index is needed regardless of presence.
 -}
-data Index = Index !Bitmap !Int !BitMatch
+data Index (bits :: Nat) = Index !(Bitmap bits) !Int !BitMatch
 
 -- | Does the Bitmap contain the Word64 at the given Shift?
 data BitMatch = NoMatch | Match
@@ -274,15 +328,14 @@ data BitMatch = NoMatch | Match
 -- | Unlifted shift counter in multiples of 'bitsPerSubkey'.
 type Shift = Int#
 
--- | Number of bits consumed per level.
-bitsPerSubkey :: Int
-bitsPerSubkey = 6
-{-# INLINE bitsPerSubkey #-}
-
 -- | Mask for extracting the subkey at a shift.
-subkeyMask :: Word64
-subkeyMask = (1 `unsafeShiftL` bitsPerSubkey) - 1
+subkeyMask :: forall bits. KnownSubkeyBits bits => Word64
+subkeyMask = ((1 :: Word64) `unsafeShiftL` bitsPerSubkey (Proxy :: Proxy bits)) - 1
 {-# INLINE subkeyMask #-}
+
+maxSubkeyIndex :: forall bits. KnownSubkeyBits bits => Int
+maxSubkeyIndex = (1 `unsafeShiftL` bitsPerSubkey (Proxy :: Proxy bits)) - 1
+{-# INLINE maxSubkeyIndex #-}
 
 -- | Boxed shift value for diagnostics and 'InvariantViolation' payloads.
 newtype ShiftBox = ShiftBox Int
@@ -292,8 +345,8 @@ shiftToInt :: Shift -> Int
 shiftToInt s = I# s
 {-# INLINE shiftToInt #-}
 
-nextShift :: Shift -> Shift
-nextShift s = case bitsPerSubkey of
+nextShift :: forall bits. KnownSubkeyBits bits => Shift -> Shift
+nextShift s = case bitsPerSubkey (Proxy :: Proxy bits) of
   I# b -> s +# b
 {-# INLINE nextShift #-}
 
@@ -311,7 +364,7 @@ shiftToBox s = ShiftBox (I# s)
 
 When the input is @0@, the result is @0@.
 -}
-lowBit :: Word64 -> Word64
+lowBit :: (Bits a, Num a) => a -> a
 lowBit w = w .&. negate w
 {-# INLINE lowBit #-}
 
@@ -319,11 +372,11 @@ lowBit w = w .&. negate w
 
 When the input is @0@, the result is @0@.
 -}
-clearLowBit :: Word64 -> Word64
+clearLowBit :: (Bits a, Num a) => a -> a
 clearLowBit w = w .&. (w - 1)
 {-# INLINE clearLowBit #-}
 
-valid :: Word64Map a -> Maybe InvariantViolation
+valid :: BitmapConstraint bits => Word64Map bits a -> Maybe InvariantViolation
 valid (Branch (BM 0) ary)
   | n == 0 = Nothing
   | otherwise = Just $ BitmapCountMismatch 0 n
@@ -331,7 +384,12 @@ valid (Branch (BM 0) ary)
   n = sizeofSmallArray ary
 valid t = validInternal 0# 0 t
 
-validInternal :: Shift -> Word64 -> Word64Map a -> Maybe InvariantViolation
+validInternal ::
+  BitmapConstraint bits =>
+  Shift ->
+  Word64 ->
+  Word64Map bits a ->
+  Maybe InvariantViolation
 validInternal shift !prefix (Leaf k _) =
   let mask =
         if shiftGE64 shift
@@ -344,14 +402,16 @@ validInternal _ _ (Branch (BM 0) _) = Just UnexpectedEmptyBranch
 validInternal shift !prefix (Branch (BM bm) ary) =
   let n = sizeofSmallArray ary
    in if popCount bm /= n
-        then Just $ BitmapCountMismatch bm n
+        then Just $ BitmapCountMismatch (fromIntegral bm) n
         else validSubtrees shift prefix bm ary
 
 validSubtrees ::
+  forall bits a.
+  BitmapConstraint bits =>
   Shift ->
   Word64 ->
-  Word64 ->
-  SmallArray (Word64Map a) ->
+  BitmapWord bits ->
+  SmallArray (Word64Map bits a) ->
   Maybe InvariantViolation
 validSubtrees shift prefix bm ary
   | sizeofSmallArray ary == 1
@@ -361,12 +421,12 @@ validSubtrees shift prefix bm ary
  where
   go =
     let children = Foldable.toList ary
-        bits = [i | i <- [0 .. 63], testBit bm i]
+        bits = [i | i <- [0 .. maxSubkeyIndex @bits], testBit bm i]
      in Foldable.asum $
           zipWith
             ( \i child ->
                 validInternal
-                  (nextShift shift)
+                  (nextShift @bits shift)
                   (prefix .|. (fromIntegral i `Bits.shiftL` shiftToInt shift :: Word64))
                   child
             )
@@ -377,10 +437,16 @@ validSubtrees shift prefix bm ary
 
 Use this when the array index is needed regardless of presence.
 -}
-index :: Shift -> Word64 -> Bitmap -> Index
-index shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
-      bit = 1 `unsafeShiftL` ix
+index ::
+  forall bits.
+  BitmapConstraint bits =>
+  Shift ->
+  Word64 ->
+  BitmapWord bits ->
+  Index bits
+index shift !k bm =
+  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask @bits)
+      bit = (1 :: BitmapWord bits) `unsafeShiftL` ix
       i = popCount (bm .&. (bit - 1))
       match = if bm .&. bit == 0 then NoMatch else Match
    in Index (BM bit) i match
@@ -390,39 +456,50 @@ index shift !k (BM bm) =
 
 This avoids a 'popCount' when the lookup misses.
 -}
-indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
-indexMatch shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
-      bit = 1 `unsafeShiftL` ix
+indexMatch ::
+  forall bits.
+  BitmapConstraint bits =>
+  Shift ->
+  Word64 ->
+  BitmapWord bits ->
+  Maybe Int
+indexMatch shift !k bm =
+  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask @bits)
+      bit = (1 :: BitmapWord bits) `unsafeShiftL` ix
    in if bm .&. bit == 0
         then Nothing
         else Just (popCount (bm .&. (bit - 1)))
 {-# INLINE indexMatch #-}
 
-empty :: Word64Map a
+empty :: BitmapConstraint bits => Word64Map bits a
 empty = Branch (BM 0) mempty
 {-# NOINLINE empty #-}
 
-singleton :: Word64 -> a -> Word64Map a
+singleton :: Word64 -> a -> Word64Map bits a
 singleton !k v = Leaf k v
 
-null :: Word64Map a -> Bool
+null :: BitmapConstraint bits => Word64Map bits a -> Bool
 null (Branch (BM 0) _) = True
 null _ = False
 
-size :: Word64Map a -> Int
+size :: Word64Map bits a -> Int
 size (Leaf _ _) = 1
 size (Branch _ ary) = Foldable.sum (fmap size ary)
 
-lookup :: Word64 -> Word64Map a -> Maybe a
+lookup ::
+  forall bits a. BitmapConstraint bits => Word64 -> Word64Map bits a -> Maybe a
 lookup !k m = case k of
   W64# ww -> lookupAtShift# 0# ww m
 
-lookupAtShift :: Shift -> Word64 -> Word64Map a -> Maybe a
+lookupAtShift ::
+  forall bits a.
+  BitmapConstraint bits => Shift -> Word64 -> Word64Map bits a -> Maybe a
 lookupAtShift shift !k = case k of
   W64# ww -> lookupAtShift# shift ww
 
-lookupAtShift# :: Shift -> Word64# -> Word64Map a -> Maybe a
+lookupAtShift# ::
+  forall bits a.
+  BitmapConstraint bits => Shift -> Word64# -> Word64Map bits a -> Maybe a
 lookupAtShift# shift k = go shift
  where
   go _ (Leaf k' v) =
@@ -432,131 +509,163 @@ lookupAtShift# shift k = go shift
           1# -> Just v
           _ -> Nothing
   go s (Branch (BM bm) ary) =
-    case indexMatch s (W64# k) (BM bm) of
+    case indexMatch @bits s (W64# k) bm of
       Nothing -> Nothing
-      Just i -> go (nextShift s) (indexSmallArray ary i)
+      Just i -> go (nextShift @bits s) (indexSmallArray ary i)
 
-member :: Word64 -> Word64Map a -> Bool
+member :: BitmapConstraint bits => Word64 -> Word64Map bits a -> Bool
 member !k m = case lookup k m of
   Just _ -> True
   Nothing -> False
 
-notMember :: Word64 -> Word64Map a -> Bool
+notMember :: BitmapConstraint bits => Word64 -> Word64Map bits a -> Bool
 notMember !k m = not (member k m)
 
-findWithDefault :: a -> Word64 -> Word64Map a -> a
+findWithDefault :: BitmapConstraint bits => a -> Word64 -> Word64Map bits a -> a
 findWithDefault def !k m = case lookup k m of
   Just v -> v
   Nothing -> def
 
-elems :: Word64Map a -> [a]
+elems :: Word64Map bits a -> [a]
 elems = fmap snd . toList
 
-keys :: Word64Map a -> [Word64]
+keys :: Word64Map bits a -> [Word64]
 keys = fmap fst . toList
 
-assocs :: Word64Map a -> [(Word64, a)]
+assocs :: Word64Map bits a -> [(Word64, a)]
 assocs = toList
 
-foldrWithKey :: (Word64 -> a -> b -> b) -> b -> Word64Map a -> b
+foldrWithKey :: (Word64 -> a -> b -> b) -> b -> Word64Map bits a -> b
 foldrWithKey f z (Leaf k v) = f k v z
 foldrWithKey f z (Branch _ ary) = Foldable.foldr (\m acc -> foldrWithKey f acc m) z ary
 
-foldlWithKey' :: (b -> Word64 -> a -> b) -> b -> Word64Map a -> b
+foldlWithKey' :: (b -> Word64 -> a -> b) -> b -> Word64Map bits a -> b
 foldlWithKey' f z (Leaf k v) = f z k v
 foldlWithKey' f z (Branch _ ary) = Foldable.foldl' (\acc m -> foldlWithKey' f acc m) z ary
 
-insert :: Word64 -> a -> Word64Map a -> Word64Map a
+insert ::
+  forall bits a.
+  BitmapConstraint bits => Word64 -> a -> Word64Map bits a -> Word64Map bits a
 insert !k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
-    case index 0# k (BM bm) of
+    case index @bits 0# k bm of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift 0#) k v child
+            newChild = insertAtShift (nextShift @bits 0#) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Unsafe insert that mutates arrays in-place under the hood.
-insertUnsafe :: Word64 -> a -> Word64Map a -> Word64Map a
+insertUnsafe ::
+  forall bits a.
+  BitmapConstraint bits => Word64 -> a -> Word64Map bits a -> Word64Map bits a
 insertUnsafe !k v m = case m of
   Branch (BM 0) _ -> singleton k v
   _ -> runST (insertAtShiftUnsafe 0# k v m)
 
-insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+insertWith ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (a -> a -> a) -> Word64 -> a -> Word64Map bits a -> Word64Map bits a
 insertWith f !k v m = insertWithKey (\_ new old -> f new old) k v m
 
 insertWithKey ::
-  (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+  forall bits a.
+  BitmapConstraint bits =>
+  (Word64 -> a -> a -> a) ->
+  Word64 ->
+  a ->
+  Word64Map bits a ->
+  Word64Map bits a
 insertWithKey f !k v m = case m of
   Branch (BM 0) _ -> singleton k v
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
     | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
-    case index 0# k (BM bm) of
+    case index @bits 0# k bm of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift 0#) f k v child
+            newChild = insertWithKeyAtShift (nextShift @bits 0#) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Only valid for internal nodes.
 insertWithKeyAtShift ::
-  Shift -> (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift ->
+  (Word64 -> a -> a -> a) ->
+  Word64 ->
+  a ->
+  Word64Map bits a ->
+  Word64Map bits a
 insertWithKeyAtShift s f !k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k (f k v v')
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
-    case index s k (BM bm) of
+    case index @bits s k bm of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertWithKeyAtShift (nextShift s) f k v child
+            newChild = insertWithKeyAtShift (nextShift @bits s) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Only valid for internal nodes.
-insertAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertAtShift ::
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift -> Word64 -> a -> Word64Map bits a -> Word64Map bits a
 insertAtShift s !k v m = case m of
   Leaf k' v'
     | k == k' -> Leaf k v
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
-    case index s k (BM bm) of
+    case index @bits s k bm of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertAtShift (nextShift s) k v child
+            newChild = insertAtShift (nextShift @bits s) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Unsafe insert using in-place updates. Expects a non-empty root.
-insertAtShiftUnsafe :: Shift -> Word64 -> a -> Word64Map a -> ST s (Word64Map a)
+insertAtShiftUnsafe ::
+  forall bits a s.
+  BitmapConstraint bits =>
+  Shift ->
+  Word64 ->
+  a ->
+  Word64Map bits a ->
+  ST s (Word64Map bits a)
 insertAtShiftUnsafe s !k v m = case m of
   Leaf k' v'
     | k == k' -> pure (Leaf k v)
     | otherwise -> pure (two s k v k' v')
   branch@(Branch (BM bm) ary) ->
-    case index s k (BM bm) of
+    case index @bits s k bm of
       Index _ i Match -> do
         let child = indexSmallArray ary i
-        newChild <- insertAtShiftUnsafe (nextShift s) k v child
+        newChild <- insertAtShiftUnsafe (nextShift @bits s) k v child
         _ <- updateAtUnsafe i newChild ary
         pure branch
       Index (BM bit) i NoMatch ->
         pure (Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary))
 
-two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
+two ::
+  forall bits a.
+  BitmapConstraint bits => Shift -> Word64 -> a -> Word64 -> a -> Word64Map bits a
 two shift !k1 v1 !k2 v2 =
-  let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
-      idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. subkeyMask)
+  let idx1 = fromIntegral ((k1 `Bits.shiftR` shiftToInt shift) .&. subkeyMask @bits)
+      idx2 = fromIntegral ((k2 `Bits.shiftR` shiftToInt shift) .&. subkeyMask @bits)
    in if idx1 /= idx2
         then
           let bm = Bits.bit idx1 .|. Bits.bit idx2
@@ -566,24 +675,28 @@ two shift !k1 v1 !k2 v2 =
                   else smallArrayFromList [Leaf k2 v2, Leaf k1 v1]
            in Branch (BM bm) ary
         else
-          let child = two (nextShift shift) k1 v1 k2 v2
+          let child = two (nextShift @bits shift) k1 v1 k2 v2
               bm = Bits.bit idx1
            in Branch (BM bm) (smallArrayFromList [child])
 
-delete :: Word64 -> Word64Map a -> Word64Map a
+delete ::
+  forall bits a.
+  BitmapConstraint bits => Word64 -> Word64Map bits a -> Word64Map bits a
 delete !k = deleteAtShift 0# k
 
-deleteAtShift :: Shift -> Word64 -> Word64Map a -> Word64Map a
+deleteAtShift ::
+  forall bits a.
+  BitmapConstraint bits => Shift -> Word64 -> Word64Map bits a -> Word64Map bits a
 deleteAtShift shift !k m = go shift m
  where
   go _ (Leaf k' _) | k == k' = empty
   go _ leaf@(Leaf _ _) = leaf
   go s (Branch (BM bm) ary) =
-    case index s k (BM bm) of
+    case index @bits s k bm of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index (BM bit) i Match ->
         let child = indexSmallArray ary i
-            newChild = go (nextShift s) child
+            newChild = go (nextShift @bits s) child
          in if null newChild
               then
                 let newBm = bm .&. complement bit
@@ -593,31 +706,54 @@ deleteAtShift shift !k m = go shift m
                 let newAry = updateAt i newChild ary
                  in collapse (BM bm) newAry
 
-adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
+adjust ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (a -> a) -> Word64 -> Word64Map bits a -> Word64Map bits a
 adjust f !k m = adjustWithKey (\_ x -> f x) k m
 
-adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
+adjustWithKey ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (Word64 -> a -> a) ->
+  Word64 ->
+  Word64Map bits a ->
+  Word64Map bits a
 adjustWithKey f !k m = go 0# m
  where
   go _ (Leaf k' v)
     | k == k' = Leaf k (f k v)
     | otherwise = Leaf k' v
   go shift (Branch (BM bm) ary) =
-    case index shift k (BM bm) of
+    case index @bits shift k bm of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = go (nextShift shift) child
+            newChild = go (nextShift @bits shift) child
          in Branch (BM bm) (updateAt i newChild ary)
 
-update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+update ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (a -> Maybe a) -> Word64 -> Word64Map bits a -> Word64Map bits a
 update f !k m = updateWithKey (\_ x -> f x) k m
 
 updateWithKey ::
-  (Word64 -> a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+  forall bits a.
+  BitmapConstraint bits =>
+  (Word64 -> a -> Maybe a) ->
+  Word64 ->
+  Word64Map bits a ->
+  Word64Map bits a
 updateWithKey f !k = alter (\v -> v >>= f k) k
 
-alter :: (Maybe a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
+alter ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (Maybe a -> Maybe a) ->
+  Word64 ->
+  Word64Map bits a ->
+  Word64Map bits a
 alter f !k m = case lookup k m of
   Nothing -> case f Nothing of
     Nothing -> m
@@ -626,14 +762,17 @@ alter f !k m = case lookup k m of
     Nothing -> delete k m
     Just v' -> insert k v' m
 
-map :: (a -> b) -> Word64Map a -> Word64Map b
+map :: (a -> b) -> Word64Map bits a -> Word64Map bits b
 map = fmap
 
-mapWithKey :: (Word64 -> a -> b) -> Word64Map a -> Word64Map b
+mapWithKey :: (Word64 -> a -> b) -> Word64Map bits a -> Word64Map bits b
 mapWithKey f (Leaf k v) = Leaf k (f k v)
 mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 
-union :: Word64Map a -> Word64Map a -> Word64Map a
+union ::
+  forall bits a.
+  BitmapConstraint bits =>
+  Word64Map bits a -> Word64Map bits a -> Word64Map bits a
 union m1 m2 = unionAtShiftHandleEmpty 0# m1 m2
 
 {- | Merge two branch arrays by walking the union bitmap once.
@@ -644,12 +783,14 @@ union bitmap is also non-zero.
 The @both@ function is used when a bit is present in both branches.
 -}
 unionBranches ::
-  Word64 ->
-  SmallArray (Word64Map a) ->
-  Word64 ->
-  SmallArray (Word64Map a) ->
-  (Word64Map a -> Word64Map a -> Word64Map a) ->
-  (Word64, SmallArray (Word64Map a))
+  forall bits a.
+  BitmapConstraint bits =>
+  BitmapWord bits ->
+  SmallArray (Word64Map bits a) ->
+  BitmapWord bits ->
+  SmallArray (Word64Map bits a) ->
+  (Word64Map bits a -> Word64Map bits a -> Word64Map bits a) ->
+  (BitmapWord bits, SmallArray (Word64Map bits a))
 unionBranches bm1 ary1 bm2 ary2 both =
   let newBm = bm1 .|. bm2
       n = popCount newBm
@@ -682,13 +823,19 @@ unionBranches bm1 ary1 bm2 ary2 both =
           step newBm 0 0 0
       )
 
-unionAtShiftHandleEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShiftHandleEmpty ::
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift -> Word64Map bits a -> Word64Map bits a -> Word64Map bits a
 unionAtShiftHandleEmpty shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
   _ -> unionAtShiftNoEmpty shift m1 m2
 
-unionAtShiftNoEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
+unionAtShiftNoEmpty ::
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift -> Word64Map bits a -> Word64Map bits a -> Word64Map bits a
 unionAtShiftNoEmpty shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
@@ -699,25 +846,45 @@ unionAtShiftNoEmpty shift m1 m2 = case (m1, m2) of
             ary1
             bm2
             ary2
-            (unionAtShiftNoEmpty (nextShift shift))
+            (unionAtShiftNoEmpty (nextShift @bits shift))
      in collapse (BM newBm) newAry
 
-unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+unionWith ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (a -> a -> a) -> Word64Map bits a -> Word64Map bits a -> Word64Map bits a
 unionWith f = unionWithKey (\_ x y -> f x y)
 
 unionWithKey ::
-  (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+  forall bits a.
+  BitmapConstraint bits =>
+  (Word64 -> a -> a -> a) ->
+  Word64Map bits a ->
+  Word64Map bits a ->
+  Word64Map bits a
 unionWithKey f m1 m2 = unionWithKeyAtShiftRoot 0# f m1 m2
 
 unionWithKeyAtShiftRoot ::
-  Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift ->
+  (Word64 -> a -> a -> a) ->
+  Word64Map bits a ->
+  Word64Map bits a ->
+  Word64Map bits a
 unionWithKeyAtShiftRoot shift f m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
   _ -> unionWithKeyAtShift shift f m1 m2
 
 unionWithKeyAtShift ::
-  Shift -> (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift ->
+  (Word64 -> a -> a -> a) ->
+  Word64Map bits a ->
+  Word64Map bits a ->
+  Word64Map bits a
 unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertWithKeyAtShift shift f k1 v1 m2
   (_, Leaf k2 v2) -> insertWithKeyAtShift shift (\k new old -> f k old new) k2 v2 m1
@@ -728,30 +895,40 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
             ary1
             bm2
             ary2
-            (unionWithKeyAtShift (nextShift shift) f)
+            (unionWithKeyAtShift (nextShift @bits shift) f)
      in collapse (BM newBm) newAry
 
-insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
+insertIfNotExists ::
+  forall bits a.
+  BitmapConstraint bits => Word64 -> a -> Word64Map bits a -> Word64Map bits a
 insertIfNotExists !k v m = insertIfNotExistsAtShift 0# k v m
 
-insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertIfNotExistsAtShift ::
+  forall bits a.
+  BitmapConstraint bits =>
+  Shift ->
+  Word64 ->
+  a ->
+  Word64Map bits a ->
+  Word64Map bits a
 insertIfNotExistsAtShift shift !k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'
   Branch (BM bm) ary ->
-    case index shift k (BM bm) of
+    case index @bits shift k bm of
       Index _ i Match ->
         let child = indexSmallArray ary i
-            newChild = insertIfNotExistsAtShift (nextShift shift) k v child
+            newChild = insertIfNotExistsAtShift (nextShift @bits shift) k v child
          in Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
-fromList :: [(Word64, a)] -> Word64Map a
+fromList ::
+  forall bits a. BitmapConstraint bits => [(Word64, a)] -> Word64Map bits a
 fromList = Foldable.foldl' (\m (!k, v) -> insertUnsafe k v m) empty
 
-toList :: Word64Map a -> [(Word64, a)]
+toList :: Word64Map bits a -> [(Word64, a)]
 toList (Leaf k v) = [(k, v)]
 toList (Branch _ ary) = concatMap toList (Foldable.toList ary)
 
@@ -785,7 +962,9 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
 
-collapse :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
+collapse ::
+  BitmapConstraint bits =>
+  Bitmap bits -> SmallArray (Word64Map bits a) -> Word64Map bits a
 collapse bm ary = case sizeofSmallArray ary of
   0 -> empty
   1 -> case indexSmallArray ary 0 of
@@ -794,13 +973,14 @@ collapse bm ary = case sizeofSmallArray ary of
   _ -> Branch bm ary
 
 mergeWithKey ::
-  forall a b c.
+  forall bits a b c.
+  BitmapConstraint bits =>
   (Word64 -> a -> b -> Maybe c) ->
-  (Word64Map a -> Word64Map c) ->
-  (Word64Map b -> Word64Map c) ->
-  Word64Map a ->
-  Word64Map b ->
-  Word64Map c
+  (Word64Map bits a -> Word64Map bits c) ->
+  (Word64Map bits b -> Word64Map bits c) ->
+  Word64Map bits a ->
+  Word64Map bits b ->
+  Word64Map bits c
 mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) m2 = g2 m2
@@ -813,14 +993,14 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
     | otherwise =
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
   go shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
-    case index shift k1 (BM bm2) of
+    case index @bits shift k1 bm2 of
       Index _ _ NoMatch ->
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 m2)
       Index _ i Match ->
         let (newBm, newAry) = runST (mergeLeafVsBranch shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
   go shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
-    case index shift k2 (BM bm1) of
+    case index @bits shift k2 bm1 of
       Index _ _ NoMatch ->
         unionAtShiftHandleEmpty shift (g1 m1) (g2 (Leaf k2 v2))
       Index _ i Match ->
@@ -833,11 +1013,11 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
   mergeWithKeyBranches ::
     forall s.
     Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
-    ST s (Word64, SmallArray (Word64Map c))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits b) ->
+    ST s (BitmapWord bits, SmallArray (Word64Map bits c))
   mergeWithKeyBranches shift bm1 ary1 bm2 ary2 = do
     let unionBm = bm1 .|. bm2
         n = popCount unionBm
@@ -869,7 +1049,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                       w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
-                          let child = go (nextShift shift) c1 c2
+                          let child = go (nextShift @bits shift) c1 c2
                            in if null child
                                 then step w' i1' i2' j newBm
                                 else do
@@ -897,10 +1077,10 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
     Shift ->
     Word64 ->
     a ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits b) ->
     Int ->
-    ST s (Word64, SmallArray (Word64Map c))
+    ST s (BitmapWord bits, SmallArray (Word64Map bits c))
   mergeLeafVsBranch shift k1 v1 bm2 ary2 iMatch = do
     let n = sizeofSmallArray ary2
     mary <- newSmallArray n empty
@@ -917,7 +1097,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                   child = indexSmallArray ary2 i
                   child' =
                     if i == iMatch
-                      then go (nextShift shift) (Leaf k1 v1) child
+                      then go (nextShift @bits shift) (Leaf k1 v1) child
                       else g2 child
                   w' = clearLowBit w
                in if null child'
@@ -932,10 +1112,10 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
     Shift ->
     Word64 ->
     b ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
     Int ->
-    ST s (Word64, SmallArray (Word64Map c))
+    ST s (BitmapWord bits, SmallArray (Word64Map bits c))
   mergeBranchVsLeaf shift k2 v2 bm1 ary1 iMatch = do
     let n = sizeofSmallArray ary1
     mary <- newSmallArray n empty
@@ -952,7 +1132,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                   child = indexSmallArray ary1 i
                   child' =
                     if i == iMatch
-                      then go (nextShift shift) child (Leaf k2 v2)
+                      then go (nextShift @bits shift) child (Leaf k2 v2)
                       else g1 child
                   w' = clearLowBit w
                in if null child'
@@ -962,15 +1142,18 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                       step w' (i + 1) (j + 1) (newBm .|. bit)
     step bm1 0 0 0
 
-difference :: Word64Map a -> Word64Map b -> Word64Map a
+difference ::
+  BitmapConstraint bits =>
+  Word64Map bits a -> Word64Map bits b -> Word64Map bits a
 difference m1 m2 = differenceWith (\_ _ -> Nothing) m1 m2
 
 differenceWith ::
-  forall a b.
+  forall bits a b.
+  BitmapConstraint bits =>
   (a -> b -> Maybe a) ->
-  Word64Map a ->
-  Word64Map b ->
-  Word64Map a
+  Word64Map bits a ->
+  Word64Map bits b ->
+  Word64Map bits a
 differenceWith f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
@@ -992,11 +1175,11 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
   differenceBranches ::
     forall s.
     Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
-    ST s (Word64, SmallArray (Word64Map a))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits b) ->
+    ST s (BitmapWord bits, SmallArray (Word64Map bits a))
   differenceBranches shift bm1 ary1 bm2 ary2 = do
     let unionBm = bm1 .|. bm2
         n = popCount bm1
@@ -1029,7 +1212,7 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
                       w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
-                          let child = go (nextShift shift) c1 c2
+                          let child = go (nextShift @bits shift) c1 c2
                            in if null child
                                 then step w' i1' i2' j newBm
                                 else do
@@ -1041,18 +1224,23 @@ differenceWith f m1_ m2_ = go 0# m1_ m2_
                         _ -> step w' i1' i2' j newBm
         step unionBm 0 0 0 0
 
-intersection :: Word64Map a -> Word64Map b -> Word64Map a
+intersection ::
+  BitmapConstraint bits =>
+  Word64Map bits a -> Word64Map bits b -> Word64Map bits a
 intersection m1 m2 = intersectionWith (\x _ -> x) m1 m2
 
-intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
+intersectionWith ::
+  BitmapConstraint bits =>
+  (a -> b -> c) -> Word64Map bits a -> Word64Map bits b -> Word64Map bits c
 intersectionWith f = intersectionWithKey (\_ x y -> f x y)
 
 intersectionWithKey ::
-  forall a b c.
+  forall bits a b c.
+  BitmapConstraint bits =>
   (Word64 -> a -> b -> c) ->
-  Word64Map a ->
-  Word64Map b ->
-  Word64Map c
+  Word64Map bits a ->
+  Word64Map bits b ->
+  Word64Map bits c
 intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
  where
   go _ (Branch (BM 0) _) _ = empty
@@ -1070,11 +1258,11 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
   goArray ::
     forall s.
     Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
-    ST s (Word64, SmallArray (Word64Map c))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits b) ->
+    ST s (BitmapWord bits, SmallArray (Word64Map bits c))
   goArray shift bm1 ary1 bm2 ary2 = do
     let commonBm = bm1 .&. bm2
         unionBm = bm1 .|. bm2
@@ -1107,7 +1295,7 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
                       w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
-                          let child = go (nextShift shift) c1 c2
+                          let child = go (nextShift @bits shift) c1 c2
                            in if null child
                                 then step w' i1' i2' j newBm
                                 else do
@@ -1116,10 +1304,14 @@ intersectionWithKey f m1_ m2_ = go 0# m1_ m2_
                         _ -> step w' i1' i2' j newBm
         step unionBm 0 0 0 0
 
-filter :: (a -> Bool) -> Word64Map a -> Word64Map a
+filter ::
+  BitmapConstraint bits => (a -> Bool) -> Word64Map bits a -> Word64Map bits a
 filter f = filterWithKey (\_ x -> f x)
 
-filterWithKey :: forall a. (Word64 -> a -> Bool) -> Word64Map a -> Word64Map a
+filterWithKey ::
+  forall bits a.
+  BitmapConstraint bits =>
+  (Word64 -> a -> Bool) -> Word64Map bits a -> Word64Map bits a
 filterWithKey f = go
  where
   go (Leaf k v) = if f k v then Leaf k v else empty
@@ -1130,10 +1322,12 @@ filterWithKey f = go
          in collapse (BM newBm) newAry -- keep invariant by collapsing empty/single-leaf branches
   goArray ::
     forall s.
-    Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map a))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    ST s (BitmapWord bits, SmallArray (Word64Map bits a))
   goArray bm ary = do
     let n = sizeofSmallArray ary
-    mary <- newSmallArray n (empty :: Word64Map a)
+    mary <- newSmallArray n (empty :: Word64Map bits a)
     let step !w !i !j !newBm
           | w == 0 =
               if j == 0
@@ -1153,11 +1347,17 @@ filterWithKey f = go
                       step w' (i + 1) (j + 1) (newBm .|. bit)
     step bm 0 0 0
 
-partition :: (a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
+partition ::
+  BitmapConstraint bits =>
+  (a -> Bool) -> Word64Map bits a -> (Word64Map bits a, Word64Map bits a)
 partition f = partitionWithKey (\_ x -> f x)
 
 partitionWithKey ::
-  forall a. (Word64 -> a -> Bool) -> Word64Map a -> (Word64Map a, Word64Map a)
+  forall bits a.
+  BitmapConstraint bits =>
+  (Word64 -> a -> Bool) ->
+  Word64Map bits a ->
+  (Word64Map bits a, Word64Map bits a)
 partitionWithKey f m = go m
  where
   go (Leaf k v)
@@ -1171,26 +1371,36 @@ partitionWithKey f m = go m
      in (l, r)
 
   partitionBranch ::
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    (Word64, SmallArray (Word64Map a), Word64, SmallArray (Word64Map a))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    ( BitmapWord bits
+    , SmallArray (Word64Map bits a)
+    , BitmapWord bits
+    , SmallArray (Word64Map bits a)
+    )
   partitionBranch bm ary = runST (goArray bm ary)
 
   goArray ::
     forall s.
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    ST s (Word64, SmallArray (Word64Map a), Word64, SmallArray (Word64Map a))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    ST
+      s
+      ( BitmapWord bits
+      , SmallArray (Word64Map bits a)
+      , BitmapWord bits
+      , SmallArray (Word64Map bits a)
+      )
   goArray bm ary = do
     let n = sizeofSmallArray ary
-    maryL <- newSmallArray n (empty :: Word64Map b)
-    maryR <- newSmallArray n (empty :: Word64Map c)
+    maryL <- newSmallArray n (empty :: Word64Map bits b)
+    maryR <- newSmallArray n (empty :: Word64Map bits c)
     let finish ::
           forall x.
-          SmallMutableArray s (Word64Map x) ->
+          SmallMutableArray s (Word64Map bits x) ->
           Int ->
-          Word64 ->
-          ST s (Word64, SmallArray (Word64Map x))
+          BitmapWord bits ->
+          ST s (BitmapWord bits, SmallArray (Word64Map bits x))
         finish mary j bmAcc =
           if j == 0
             then pure (0, mempty)
@@ -1226,11 +1436,14 @@ partitionWithKey f m = go m
                     step w' (i + 1) jl' jr' lBm' rBm'
     step bm 0 0 0 0 0
 
-mapMaybe :: (a -> Maybe b) -> Word64Map a -> Word64Map b
+mapMaybe ::
+  BitmapConstraint bits => (a -> Maybe b) -> Word64Map bits a -> Word64Map bits b
 mapMaybe f = mapMaybeWithKey (\_ x -> f x)
 
 mapMaybeWithKey ::
-  forall a b. (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b
+  forall bits a b.
+  BitmapConstraint bits =>
+  (Word64 -> a -> Maybe b) -> Word64Map bits a -> Word64Map bits b
 mapMaybeWithKey f m = go m
  where
   go (Leaf k v) = case f k v of
@@ -1242,12 +1455,16 @@ mapMaybeWithKey f m = go m
      in collapse (BM newBm) newAry
 
   mapMaybeBranch ::
-    Word64 -> SmallArray (Word64Map a) -> (Word64, SmallArray (Word64Map b))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    (BitmapWord bits, SmallArray (Word64Map bits b))
   mapMaybeBranch bm ary = runST (goArray bm ary)
 
   goArray ::
     forall s.
-    Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map b))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    ST s (BitmapWord bits, SmallArray (Word64Map bits b))
   goArray bm ary = do
     let n = sizeofSmallArray ary
     mary <- newSmallArray n empty
@@ -1271,14 +1488,17 @@ mapMaybeWithKey f m = go m
                       step w' (i + 1) (j + 1) (newBm .|. bit)
     step bm 0 0 0
 
-mapEither :: (a -> Either b c) -> Word64Map a -> (Word64Map b, Word64Map c)
+mapEither ::
+  BitmapConstraint bits =>
+  (a -> Either b c) -> Word64Map bits a -> (Word64Map bits b, Word64Map bits c)
 mapEither f = mapEitherWithKey (\_ x -> f x)
 
 mapEitherWithKey ::
-  forall a b c.
+  forall bits a b c.
+  BitmapConstraint bits =>
   (Word64 -> a -> Either b c) ->
-  Word64Map a ->
-  (Word64Map b, Word64Map c)
+  Word64Map bits a ->
+  (Word64Map bits b, Word64Map bits c)
 mapEitherWithKey f m = go m
  where
   go (Leaf k v) = case f k v of
@@ -1293,19 +1513,25 @@ mapEitherWithKey f m = go m
 
   mapEitherBranches ::
     forall s.
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    ST s (Word64, SmallArray (Word64Map b), Word64, SmallArray (Word64Map c))
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    ST
+      s
+      ( BitmapWord bits
+      , SmallArray (Word64Map bits b)
+      , BitmapWord bits
+      , SmallArray (Word64Map bits c)
+      )
   mapEitherBranches bm ary = do
     let n = sizeofSmallArray ary
-    maryL <- newSmallArray n (empty :: Word64Map b)
-    maryR <- newSmallArray n (empty :: Word64Map c)
+    maryL <- newSmallArray n (empty :: Word64Map bits b)
+    maryR <- newSmallArray n (empty :: Word64Map bits c)
     let finish ::
           forall x.
-          SmallMutableArray s (Word64Map x) ->
+          SmallMutableArray s (Word64Map bits x) ->
           Int ->
-          Word64 ->
-          ST s (Word64, SmallArray (Word64Map x))
+          BitmapWord bits ->
+          ST s (BitmapWord bits, SmallArray (Word64Map bits x))
         finish mary j bmAcc =
           if j == 0
             then pure (0, mempty)
@@ -1341,14 +1567,16 @@ mapEitherWithKey f m = go m
                     step w' (i + 1) jl' jr' lBm' rBm'
     step bm 0 0 0 0 0
 
-isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
+isSubmapOf ::
+  (Eq a, BitmapConstraint bits) => Word64Map bits a -> Word64Map bits a -> Bool
 isSubmapOf = isSubmapOfBy (==)
 
 isSubmapOfBy ::
-  forall a b.
+  forall bits a b.
+  BitmapConstraint bits =>
   (a -> b -> Bool) ->
-  Word64Map a ->
-  Word64Map b ->
+  Word64Map bits a ->
+  Word64Map bits b ->
   Bool
 isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
  where
@@ -1359,14 +1587,14 @@ isSubmapOfBy f m1_ m2_ = go 0# m1_ m2_
     Just v2 -> f v1 v2
   go _ (Branch _ _) (Leaf _ _) = False
   go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
-    submapBranch (nextShift shift) bm1 ary1 bm2 ary2
+    submapBranch (nextShift @bits shift) bm1 ary1 bm2 ary2
 
   submapBranch ::
     Shift ->
-    Word64 ->
-    SmallArray (Word64Map a) ->
-    Word64 ->
-    SmallArray (Word64Map b) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits a) ->
+    BitmapWord bits ->
+    SmallArray (Word64Map bits b) ->
     Bool
   submapBranch shift bm1 ary1 bm2 ary2 = step (bm1 .|. bm2) 0 0
    where

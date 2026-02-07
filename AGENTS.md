@@ -72,6 +72,7 @@ Example: `CABAL_DIR=/tmp/cabal cabal build`
 10. **Commit Author**: Use `Codex <codex@example.com>` for the commit
    author identity unless instructed otherwise.
 11. **Core Dumps**: `cabal.project.local` is typically created from `cabal.project.local.dump-code` to enable Core/Code-Prep dumps. It is expected to remain untracked; do not add it to git unless explicitly requested.
+12. **PR Reviews**: Never mark review comments/threads as resolved; Simon will do this once satisfied.
 
 ## Key Development Patterns
 
@@ -179,6 +180,18 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - **Inlining**: Ensure small helper functions are marked `INLINE` or `INLINABLE`.
 
 ## Recent Learnings / Helpers
+
+- GitHub review threads: `reviewThreads` GraphQL nodes do not expose `createdAt`;
+  use the first comment’s `createdAt` when ordering threads.
+- Line-level replies can be posted with GraphQL
+  `addPullRequestReviewThreadReply` (thread id + body), which avoids
+  needing `commit_id/path/position` for REST comments.
+- If GitHub returns `429 Too Many Requests`, it is often a secondary rate
+  limit; reduce query frequency or batch multiple fields into one GraphQL
+  call and check `gh api rate_limit`.
+- QuickCheck performance: when properties over nested lists are slow,
+  wrap inputs in a size-scaled newtype (e.g. `ShortList`) or use
+  `scale`/`resize` to cap sizes.
 
 - Use `lowBit` (`w .&. negate w`) and `clearLowBit` (`w .&. (w - 1)`) for bitmap scans; both are documented to return 0 on input 0. Every bit-walk (union/diff/intersect/filter/partition/etc.) should loop by clearing the low bit instead of recomputing `popCount`.
 - Branch merging helper is `unionBranches`; analogous helpers are `differenceBranches` and `intersectBranch`. Prefer single-pass bitmap walks with mutable arrays and shrink before freeze.

@@ -174,19 +174,18 @@ sameSmallArray (SmallArray a1#) (SmallArray a2#) =
   isTrue# (sameSmallArray# a1# a2#)
 {-# INLINE sameSmallArray #-}
 
-sameSmallArrayAny :: SmallArray a -> SmallArray b -> Bool
-sameSmallArrayAny (SmallArray a1#) (SmallArray a2#) =
-  isTrue# (sameSmallArray# a1# (Exts.unsafeCoerce# a2#))
-{-# INLINE sameSmallArrayAny #-}
-
 {- | Pointer equality for 'Word64Map' values.
 
 Best when both maps are already in WHNF; otherwise this can return False
 for equal but unevaluated thunks. Use only for sharing/fast-paths.
 -}
-sameMapByReference :: Word64Map a -> Word64Map a -> Bool
-sameMapByReference m1 m2 = isTrue# (reallyUnsafePtrEquality m1 m2)
-{-# INLINE sameMapByReference #-}
+sameMap :: Word64Map a -> Word64Map a -> Bool
+sameMap m1 m2 = isTrue# (reallyUnsafePtrEquality m1 m2)
+{-# INLINE sameMap #-}
+
+sameValue :: a -> a -> Bool
+sameValue x y = isTrue# (reallyUnsafePtrEquality x y)
+{-# INLINE sameValue #-}
 
 instance Ord a => Ord (Word64Map a) where
   compare m1 m2 = compare (toList m1) (toList m2)
@@ -769,9 +768,11 @@ insertIfNotExistsAtShift shift !k v m = case m of
       Index _ i Match ->
         case indexSmallArray## ary i of
           (# child0 #) ->
+            -- TODO: Verify whether array elements are always in WHNF so we can
+            -- drop the bang on child/newChild here.
             let !child = child0
                 !newChild = insertIfNotExistsAtShift (nextShift shift) k v child
-             in if sameMapByReference child newChild
+             in if sameMap child newChild
                   then branch
                   else Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->

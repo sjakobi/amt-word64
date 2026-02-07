@@ -1268,13 +1268,13 @@ mapEitherWithKey ::
   (Word64 -> a -> Either b c) ->
   Word64Map a ->
   (Word64Map b, Word64Map c)
-mapEitherWithKey f m = go m
+mapEitherWithKey f m = mapEitherNode m
  where
-  go (Leaf k v) = case f k v of
+  mapEitherNode (Leaf k v) = case f k v of
     Left b -> (Leaf k b, empty)
     Right c -> (empty, Leaf k c)
-  go (Branch (BM 0) _) = (empty, empty)
-  go (Branch (BM bm) ary) =
+  mapEitherNode (Branch (BM 0) _) = (empty, empty)
+  mapEitherNode (Branch (BM bm) ary) =
     let (lBm, lAry, rBm, rAry) = runST (mapEitherBranches bm ary)
         l = collapse (BM lBm) lAry
         r = collapse (BM rBm) rAry
@@ -1310,7 +1310,7 @@ mapEitherWithKey f m = go m
           | otherwise =
               let bit = lowBit w
                   child = indexSmallArray ary i
-                  (lChild, rChild) = go child
+                  (lChild, rChild) = mapEitherNode child
                   w' = clearLowBit w
                   (jl', lBm') =
                     if null lChild

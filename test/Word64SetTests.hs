@@ -62,6 +62,13 @@ instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
 
+newtype KGroups = KGroups [[K]]
+  deriving (Show)
+
+instance Arbitrary KGroups where
+  arbitrary = KGroups <$> scale (`div` 10) arbitrary
+  shrink (KGroups groups) = KGroups <$> shrink groups
+
 instance Arbitrary Word64Set where
   arbitrary = fromKList <$> arbitrary
   shrink s = fromKList <$> shrink (toSortedKList s)
@@ -297,14 +304,15 @@ prop_union_valid :: [K] -> [K] -> Property
 prop_union_valid e1 e2 =
   checkValid (union (fromKList e1) (fromKList e2))
 
-prop_unions_model :: [[K]] -> Property
-prop_unions_model groups =
+prop_unions_model :: KGroups -> Property
+prop_unions_model (KGroups groups) =
   let sets = L.map fromKList groups
       refs = L.map (Set.fromList . L.map toWord64) groups
    in toSortedList (unions sets) === Set.toAscList (Set.unions refs)
 
-prop_unions_valid :: [[K]] -> Property
-prop_unions_valid groups = checkValid (unions (L.map fromKList groups))
+prop_unions_valid :: KGroups -> Property
+prop_unions_valid (KGroups groups) =
+  checkValid (unions (L.map fromKList groups))
 
 prop_difference_model :: [K] -> [K] -> Property
 prop_difference_model e1 e2 =

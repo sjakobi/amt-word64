@@ -68,6 +68,7 @@ import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts
   ( Word64#
+  , build
   , eqWord64#
   , isTrue#
   , sameSmallArray#
@@ -770,8 +771,8 @@ fromList :: [Word64] -> Word64Set
 fromList = Foldable.foldl' (\m !k -> insertUnsafe k m) empty
 
 toList :: Word64Set -> [Word64]
-toList (Leaf k) = [k]
-toList (Branch _ ary) = concatMap toList (Foldable.toList ary)
+toList s = build (\c n -> foldr c n s)
+{-# INLINE toList #-}
 
 elems :: Word64Set -> [Word64]
 elems = toList

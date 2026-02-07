@@ -731,6 +731,8 @@ mapMonotonic :: (Word64 -> Word64) -> Word64Set -> Word64Set
 mapMonotonic = map
 
 isSubsetOf :: Word64Set -> Word64Set -> Bool
+-- TODO: Revisit isSubsetOf performance (and the Map version) once we
+-- have Core/bench numbers.
 isSubsetOf s1 s2 = go 0# s1 s2
  where
   go _ (Branch (BM 0) _) _ = True

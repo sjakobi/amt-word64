@@ -406,9 +406,12 @@ union :: Word64Set -> Word64Set -> Word64Set
 union m1 m2 = unionAtShiftHandleEmpty 0# m1 m2
 
 unions :: [Word64Set] -> Word64Set
+-- TODO: Compare with GHC.Data.Word64Set/IntSet and HashSet unions.
+-- See https://github.com/haskell-unordered-containers/unordered-containers/issues/139.
 unions = Foldable.foldl' union empty
 
 unionAtShiftHandleEmpty :: Shift -> Word64Set -> Word64Set -> Word64Set
+-- TODO: Consider inlining unionAtShiftNoEmpty here and validate Core/allocs.
 unionAtShiftHandleEmpty shift m1 m2 = case (m1, m2) of
   (Branch (BM 0) _, _) -> m2
   (_, Branch (BM 0) _) -> m1
@@ -618,6 +621,7 @@ filter f = go
  where
   go (Leaf k) = if f k then Leaf k else empty
   go (Branch (BM bm) ary)
+    -- TODO: This check is only needed for the root; consider hoisting it.
     | bm == 0 = empty
     | otherwise =
         let (newBm, newAry) = runST (goArray bm ary)
@@ -719,6 +723,8 @@ partition f m = go m
     step bm 0 0 0 0 0
 
 map :: (Word64 -> Word64) -> Word64Set -> Word64Set
+-- TODO: Consider a direct fold-based map to avoid list allocation;
+-- check the Map version too.
 map f = fromList . List.map f . toList
 
 mapMonotonic :: (Word64 -> Word64) -> Word64Set -> Word64Set

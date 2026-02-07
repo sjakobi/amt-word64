@@ -2,6 +2,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UnboxedTuples #-}
 
 module Amt.Word64.Map.Internal
   ( Word64Map (..)
@@ -89,7 +90,7 @@ import GHC.Exts
   , Word64#
   , eqWord64#
   , isTrue#
-  , reallyUnsafePtrEquality#
+  , reallyUnsafePtrEquality
   , sameSmallArray#
   , (+#)
   , (>=#)
@@ -173,9 +174,19 @@ sameSmallArray (SmallArray a1#) (SmallArray a2#) =
   isTrue# (sameSmallArray# a1# a2#)
 {-# INLINE sameSmallArray #-}
 
-sameMap :: Word64Map a -> Word64Map a -> Bool
-sameMap m1 m2 = isTrue# (reallyUnsafePtrEquality# m1 m2)
-{-# INLINE sameMap #-}
+sameSmallArrayAny :: SmallArray a -> SmallArray b -> Bool
+sameSmallArrayAny (SmallArray a1#) (SmallArray a2#) =
+  isTrue# (sameSmallArray# a1# (Exts.unsafeCoerce# a2#))
+{-# INLINE sameSmallArrayAny #-}
+
+{- | Pointer equality for 'Word64Map' values.
+
+Best when both maps are already in WHNF; otherwise this can return False
+for equal but unevaluated thunks. Use only for sharing/fast-paths.
+-}
+sameMapByReference :: Word64Map a -> Word64Map a -> Bool
+sameMapByReference m1 m2 = isTrue# (reallyUnsafePtrEquality m1 m2)
+{-# INLINE sameMapByReference #-}
 
 instance Ord a => Ord (Word64Map a) where
   compare m1 m2 = compare (toList m1) (toList m2)
@@ -645,9 +656,7 @@ mapWithKey f (Leaf k v) = Leaf k (f k v)
 mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
-union m1 m2
-  | sameMap m1 m2 = m1
-  | otherwise = unionAtShiftHandleEmpty 0# m1 m2
+union m1 m2 = unionAtShiftHandleEmpty 0# m1 m2
 
 {- | Merge two branch arrays by walking the union bitmap once.
 
@@ -705,15 +714,19 @@ unionAtShiftNoEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShiftNoEmpty shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
-  (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
-    let (newBm, newAry) =
-          unionBranches
-            bm1
-            ary1
-            bm2
-            ary2
-            (unionAtShiftNoEmpty (nextShift shift))
-     in collapse (BM newBm) newAry
+  (Branch (BM bm1) ary1, Branch (BM bm2) ary2)
+    | bm1 == bm2
+    , sameSmallArray ary1 ary2 ->
+        Branch (BM bm1) ary1
+    | otherwise ->
+        let (newBm, newAry) =
+              unionBranches
+                bm1
+                ary1
+                bm2
+                ary2
+                (unionAtShiftNoEmpty (nextShift shift))
+         in collapse (BM newBm) newAry
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith f = unionWithKey (\_ x y -> f x y)
@@ -755,11 +768,12 @@ insertIfNotExistsAtShift shift !k v m = case m of
   branch@(Branch (BM bm) ary) ->
     case index shift k (BM bm) of
       Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = insertIfNotExistsAtShift (nextShift shift) k v child
-         in if sameMap child newChild
-              then branch
-              else Branch (BM bm) (updateAt i newChild ary)
+        case indexSmallArray## ary i of
+          (# child #) ->
+            let newChild = insertIfNotExistsAtShift (nextShift shift) k v child
+             in if sameMapByReference child newChild
+                  then branch
+                  else Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
@@ -800,6 +814,8 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
 
+-- TODO: Avoid calling collapse in hot paths like delete by handling single-child
+-- branches directly to preserve sharing and reduce work.
 collapse :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
 collapse bm ary = case sizeofSmallArray ary of
   0 -> empty
@@ -1357,9 +1373,7 @@ mapEitherWithKey f m = mapE m
     step bm 0 0 0 0 0
 
 isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
-isSubmapOf m1 m2
-  | sameMap m1 m2 = True
-  | otherwise = isSubmapOfBy (==) m1 m2
+isSubmapOf = isSubmapOfBy (==)
 
 isSubmapOfBy ::
   forall a b.

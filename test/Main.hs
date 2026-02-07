@@ -1,7 +1,10 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
+import Amt.Word64.Map.Internal (BitmapConstraint)
 import Amt.Word64.Map.Lazy
   ( Word64Map
   , adjust
@@ -82,6 +85,8 @@ import Test.Tasty.QuickCheck
 import Text.Read (readListPrec, readPrec, readPrec_to_S)
 import Prelude hiding (filter, lookup, map, null)
 
+type TestMap = Word64Map 6
+
 newtype K = K Word64
   deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
 
@@ -89,7 +94,7 @@ instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
 
-instance Arbitrary a => Arbitrary (Word64Map a) where
+instance Arbitrary a => Arbitrary (TestMap a) where
   arbitrary = fromKList <$> arbitrary
   shrink m = fromKList <$> shrink (toSortedList m)
 
@@ -99,8 +104,17 @@ toWord64 (K w) = w
 fromWord64 :: Word64 -> K
 fromWord64 = K
 
-fromKList :: [(K, a)] -> Word64Map a
-fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
+fromKListBits :: BitmapConstraint bits => [(K, a)] -> Word64Map bits a
+fromKListBits = fromList . L.map (\(k, v) -> (toWord64 k, v))
+
+fromKList :: [(K, a)] -> TestMap a
+fromKList = fromKListBits @6
+
+toSortedListBits :: Word64Map bits a -> [(K, a)]
+toSortedListBits = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
+
+toSortedList :: TestMap a -> [(K, a)]
+toSortedList = toSortedListBits
 
 main :: IO ()
 main =
@@ -118,7 +132,7 @@ tests =
     "Word64Map tests"
     [ testGroup
         "empty"
-        [ testProperty "valid invariant" $ checkValid (empty @Int)
+        [ testProperty "valid invariant" $ checkValid (empty @6 @Int)
         ]
     , testGroup
         "singleton"
@@ -339,22 +353,23 @@ tests =
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
         ]
+    , otherBitsTests
     ]
 
 instanceTests :: TestTree
 instanceTests =
   testGroup
     "instance laws"
-    [ lawsToTestTree (eqLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (ordLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (showLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (showReadLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (monoidLaws (Proxy :: Proxy (Word64Map Int)))
-    , lawsToTestTree (functorLaws (Proxy :: Proxy Word64Map))
-    , lawsToTestTree (foldableLaws (Proxy :: Proxy Word64Map))
-    , lawsToTestTree (traversableLaws (Proxy :: Proxy Word64Map))
-    , lawsToTestTree (isListLaws (Proxy :: Proxy (Word64Map Int)))
+    [ lawsToTestTree (eqLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (ordLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (showLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (showReadLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (semigroupLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (monoidLaws (Proxy :: Proxy (TestMap Int)))
+    , lawsToTestTree (functorLaws (Proxy :: Proxy TestMap))
+    , lawsToTestTree (foldableLaws (Proxy :: Proxy TestMap))
+    , lawsToTestTree (traversableLaws (Proxy :: Proxy TestMap))
+    , lawsToTestTree (isListLaws (Proxy :: Proxy (TestMap Int)))
     , testGroup
         "Data"
         [ testProperty "gmapQi roundtrip" prop_data_gmapQi
@@ -369,8 +384,24 @@ instanceTests =
         ]
     ]
 
-toSortedList :: Word64Map a -> [(K, a)]
-toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
+otherBitsTests :: TestTree
+otherBitsTests =
+  testGroup
+    "other bitmap sizes"
+    [ testGroup "bits4" (bitsTests (Proxy @4))
+    , testGroup "bits5" (bitsTests (Proxy @5))
+    ]
+
+bitsTests :: forall bits. BitmapConstraint bits => Proxy bits -> [TestTree]
+bitsTests _ =
+  [ testProperty
+      "fromList matches Data.Map"
+      (prop_fromList_model_bits (Proxy @bits))
+  , testProperty "fromList valid invariant" (prop_fromList_valid_bits (Proxy @bits))
+  , testProperty "insert matches Data.Map" (prop_insert_model_bits (Proxy @bits))
+  , testProperty "delete matches Data.Map" (prop_delete_model_bits (Proxy @bits))
+  , testProperty "union matches Data.Map" (prop_union_model_bits (Proxy @bits))
+  ]
 
 lawsToTestTree :: Laws -> TestTree
 lawsToTestTree (Laws name props) =
@@ -379,10 +410,13 @@ lawsToTestTree (Laws name props) =
     | (propName, prop) <- props
     ]
 
-checkValid :: Word64Map a -> Property
-checkValid m = case valid m of
+checkValidBits :: BitmapConstraint bits => Word64Map bits a -> Property
+checkValidBits m = case valid m of
   Nothing -> property True
   Just err -> counterexample (show err) False
+
+checkValid :: TestMap a -> Property
+checkValid = checkValidBits
 
 prop_data_gmapQi :: [(K, Int)] -> Property
 prop_data_gmapQi xs =
@@ -483,6 +517,75 @@ prop_union_valid e1 e2 =
         (fromKList e1)
         (fromKList e2)
     )
+
+prop_fromList_model_bits ::
+  forall bits.
+  BitmapConstraint bits =>
+  Proxy bits ->
+  [(K, Int)] ->
+  Property
+prop_fromList_model_bits _ entries =
+  toSortedListBits (fromKListBits @bits entries)
+    === Map.toList (Map.fromList entries)
+
+prop_fromList_valid_bits ::
+  forall bits.
+  BitmapConstraint bits =>
+  Proxy bits ->
+  [(K, Int)] ->
+  Property
+prop_fromList_valid_bits _ entries =
+  checkValidBits (fromKListBits @bits entries)
+
+prop_insert_model_bits ::
+  forall bits.
+  BitmapConstraint bits =>
+  Proxy bits ->
+  [(K, Int)] ->
+  K ->
+  Int ->
+  Property
+prop_insert_model_bits _ entries k v =
+  toSortedListBits
+    ( insert
+        @bits
+        (toWord64 k)
+        v
+        (fromKListBits @bits entries)
+    )
+    === Map.toList (Map.insert k v (Map.fromList entries))
+
+prop_delete_model_bits ::
+  forall bits.
+  BitmapConstraint bits =>
+  Proxy bits ->
+  [(K, Int)] ->
+  [K] ->
+  Property
+prop_delete_model_bits _ entries ks =
+  let myMap =
+        foldl
+          (\m k -> delete @bits (toWord64 k) m)
+          (fromKListBits @bits entries)
+          ks
+      refMap = foldl (\m k -> Map.delete k m) (Map.fromList entries) ks
+   in toSortedListBits myMap === Map.toList refMap
+
+prop_union_model_bits ::
+  forall bits.
+  BitmapConstraint bits =>
+  Proxy bits ->
+  [(K, Int)] ->
+  [(K, Int)] ->
+  Property
+prop_union_model_bits _ e1 e2 =
+  let m1 = fromKListBits @bits e1
+      m2 = fromKListBits @bits e2
+      ref1 = Map.fromList e1
+      ref2 = Map.fromList e2
+      myUnion = union @bits m1 m2
+      refUnion = Map.union ref1 ref2
+   in toSortedListBits myUnion === Map.toList refUnion
 
 prop_fromList_model :: [(K, Int)] -> Property
 prop_fromList_model entries =

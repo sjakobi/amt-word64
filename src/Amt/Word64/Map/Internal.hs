@@ -346,9 +346,9 @@ validSubtrees shift prefix bm ary
   | sizeofSmallArray ary == 1
   , Leaf{} <- indexSmallArray ary 0 =
       Just $ RedundantBranch prefix
-  | otherwise = validateChildren
+  | otherwise = validKids
  where
-  validateChildren =
+  validKids =
     let children = Foldable.toList ary
         bits = [i | i <- [0 .. 63], testBit bm i]
      in Foldable.asum $

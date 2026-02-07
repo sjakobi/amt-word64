@@ -89,6 +89,7 @@ import GHC.Exts
   , Word64#
   , eqWord64#
   , isTrue#
+  , reallyUnsafePtrEquality#
   , sameSmallArray#
   , (+#)
   , (>=#)
@@ -171,6 +172,10 @@ sameSmallArray :: SmallArray a -> SmallArray a -> Bool
 sameSmallArray (SmallArray a1#) (SmallArray a2#) =
   isTrue# (sameSmallArray# a1# a2#)
 {-# INLINE sameSmallArray #-}
+
+sameMap :: Word64Map a -> Word64Map a -> Bool
+sameMap m1 m2 = isTrue# (reallyUnsafePtrEquality# m1 m2)
+{-# INLINE sameMap #-}
 
 instance Ord a => Ord (Word64Map a) where
   compare m1 m2 = compare (toList m1) (toList m2)
@@ -588,16 +593,26 @@ adjust f !k m = adjustWithKey (\_ x -> f x) k m
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjustWithKey f !k m = adj 0# m
  where
-  adj _ (Leaf k' v)
-    | k == k' = Leaf k (f k v)
-    | otherwise = Leaf k' v
-  adj shift (Branch (BM bm) ary) =
+  adj _ leaf@(Leaf k' v)
+    | k == k' =
+        let v' = f k v
+         in if sameValue v v'
+              then leaf
+              else Leaf k v'
+    | otherwise = leaf
+  adj shift branch@(Branch (BM bm) ary) =
     case index shift k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
+      Index _ _ NoMatch -> branch
       Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = adj (nextShift shift) child
-         in Branch (BM bm) (updateAt i newChild ary)
+        case indexSmallArray## ary i of
+          (# child0 #) ->
+            -- TODO: Verify whether array elements are always in WHNF so we can
+            -- drop the bang on child/newChild here.
+            let !child = child0
+                !newChild = adj (nextShift shift) child
+             in if sameMap child newChild
+                  then branch
+                  else Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
 update f !k m = updateWithKey (\_ x -> f x) k m

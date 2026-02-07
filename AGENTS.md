@@ -140,7 +140,7 @@ To optimize performance-critical functions like `insert`, it is helpful to exami
     find dist-newstyle -name "*.dump-simpl"
     ```
     Core-prep dumps live alongside them as `*.dump-prep` (e.g.
-    `dist-newstyle/build/.../src/Amt/Word64/Map.dump-prep`).
+    `dist-newstyle/build/.../src/Amt/Word64/Map/Internal.dump-prep`).
 
 ### PR Review Retrieval
 
@@ -166,12 +166,12 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 
 - **Search for worker functions**: GHC often creates workers (e.g., `$winsert`) with unboxed arguments.
   ```bash
-  grep -n "^\$winsert" path/to/Map.dump-simpl
+  grep -n "^\$winsert" path/to/Internal.dump-simpl
   ```
 - **Inspect strictness and unboxing**: Look at the `Str=` and `Arity=` signatures in the dump.
 - **Read specific sections**: Use `sed` to extract lines around a match.
   ```bash
-  sed -n '5000,5100p' path/to/Map.dump-simpl
+  sed -n '5000,5100p' path/to/Internal.dump-simpl
   ```
 
 ### Performance Tips
@@ -184,6 +184,7 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - Branch merging helper is `unionBranches`; analogous helpers are `differenceBranches` and `intersectBranch`. Prefer single-pass bitmap walks with mutable arrays and shrink before freeze.
 - `filterWithKey` now has a direct ST-based builder to avoid `Maybe` allocation; follow that pattern instead of piping through `mapMaybeWithKey` when you need a no-allocation filter.
 - Keep `Word64` key arguments strict (`!k`, `!k1`, `!k2`, etc.) across the module.
+- When renaming local recursion helpers for Core readability, prefer short, unique names (e.g., `diff`, `inter`, `mapMb`, `partArr`) to keep dumps compact and search-friendly.
 - Module layout: `Amt.Word64.Map.Internal` contains the implementation and exports internal types/constructors; `Amt.Word64.Map.Lazy` re-exports the public API; `Amt.Word64.Map` re-exports `Amt.Word64.Map.Lazy`. Tests import `Amt.Word64.Map.Lazy`, and can import `Amt.Word64.Map.Internal` qualified when needed.
 - Before building a new PR on top of `master`, check what was just merged (e.g., `git log origin/master..branch`) to avoid cherry-picking already-merged commits and unnecessary conflicts.
 - To find line-level review comments quickly, use `gh api repos/<owner>/<repo>/pulls/<pr>/comments`; review bodies can be empty, so rely on the comments API for actionable items.

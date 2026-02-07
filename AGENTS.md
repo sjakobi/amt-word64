@@ -168,6 +168,10 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
   ```bash
   grep -n "^\$winsert" path/to/Internal.dump-simpl
   ```
+- **Lookup APIs quickly**: Use Hoogle on the CLI when confirming function availability or signatures.
+  ```bash
+  hoogle "indexSmallArray##"
+  ```
 - **Inspect strictness and unboxing**: Look at the `Str=` and `Arity=` signatures in the dump.
 - **Read specific sections**: Use `sed` to extract lines around a match.
   ```bash

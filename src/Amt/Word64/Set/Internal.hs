@@ -396,6 +396,8 @@ deleteAtShift shift !k m = go shift m
                  in collapse (BM bm) newAry
 
 alterF :: Functor f => (Bool -> f Bool) -> Word64 -> Word64Set -> f Word64Set
+-- TODO: Investigate performance, including RULES and specialization to Identity etc.
+-- https://github.com/haskell/containers/blob/51902237d52dbb10002c5ac897330a584db8e671/containers/src/Data/IntSet/Internal.hs#L598-L629
 alterF f !k s =
   fmap
     (\b -> if b then insert k s else delete k s)

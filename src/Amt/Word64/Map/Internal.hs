@@ -1357,7 +1357,9 @@ mapEitherWithKey f m = mapE m
     step bm 0 0 0 0 0
 
 isSubmapOf :: Eq a => Word64Map a -> Word64Map a -> Bool
-isSubmapOf = isSubmapOfBy (==)
+isSubmapOf m1 m2
+  | sameMap m1 m2 = True
+  | otherwise = isSubmapOfBy (==) m1 m2
 
 isSubmapOfBy ::
   forall a b.

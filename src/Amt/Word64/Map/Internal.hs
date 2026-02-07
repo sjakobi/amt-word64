@@ -960,21 +960,21 @@ differenceWith ::
   Word64Map a ->
   Word64Map b ->
   Word64Map a
-differenceWith f m1_ m2_ = differenceAtShift 0# m1_ m2_
+differenceWith f m1_ m2_ = diff 0# m1_ m2_
  where
-  differenceAtShift _ (Branch (BM 0) _) _ = empty
-  differenceAtShift _ m1 (Branch (BM 0) _) = m1
-  differenceAtShift shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
+  diff _ (Branch (BM 0) _) _ = empty
+  diff _ m1 (Branch (BM 0) _) = m1
+  diff shift (Leaf k1 v1) m2 = case lookupAtShift shift k1 m2 of
     Nothing -> Leaf k1 v1
     Just v2 -> case f v1 v2 of
       Nothing -> empty
       Just v1' -> Leaf k1 v1'
-  differenceAtShift shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
+  diff shift m1 (Leaf k2 v2) = case lookupAtShift shift k2 m1 of
     Nothing -> m1
     Just v1 -> case f v1 v2 of
       Nothing -> deleteAtShift shift k2 m1
       Just v1' -> insertAtShift shift k2 v1' (deleteAtShift shift k2 m1)
-  differenceAtShift shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  diff shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let (newBm, newAry) = runST (differenceBranches shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
@@ -1018,7 +1018,7 @@ differenceWith f m1_ m2_ = differenceAtShift 0# m1_ m2_
                       w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
-                          let child = differenceAtShift (nextShift shift) c1 c2
+                          let child = diff (nextShift shift) c1 c2
                            in if null child
                                 then step w' i1' i2' j newBm
                                 else do

@@ -1115,12 +1115,12 @@ filterWithKey f = filt
   filt (Branch (BM bm) ary)
     | bm == 0 = empty
     | otherwise =
-        let (newBm, newAry) = runST (filterBranchArray bm ary)
+        let (newBm, newAry) = runST (filtArr bm ary)
          in collapse (BM newBm) newAry -- keep invariant by collapsing empty/single-leaf branches
-  filterBranchArray ::
+  filtArr ::
     forall s.
     Word64 -> SmallArray (Word64Map a) -> ST s (Word64, SmallArray (Word64Map a))
-  filterBranchArray bm ary = do
+  filtArr bm ary = do
     let n = sizeofSmallArray ary
     mary <- newSmallArray n (empty :: Word64Map a)
     let step !w !i !j !newBm

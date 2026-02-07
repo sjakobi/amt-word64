@@ -750,12 +750,14 @@ insertIfNotExistsAtShift shift !k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'
-  Branch (BM bm) ary ->
+  branch@(Branch (BM bm) ary) ->
     case index shift k (BM bm) of
       Index _ i Match ->
         let child = indexSmallArray ary i
             newChild = insertIfNotExistsAtShift (nextShift shift) k v child
-         in Branch (BM bm) (updateAt i newChild ary)
+         in if sameMap child newChild
+              then branch
+              else Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 

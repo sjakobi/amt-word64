@@ -645,7 +645,9 @@ mapWithKey f (Leaf k v) = Leaf k (f k v)
 mapWithKey f (Branch bm ary) = Branch bm (fmap (mapWithKey f) ary)
 
 union :: Word64Map a -> Word64Map a -> Word64Map a
-union m1 m2 = unionAtShiftHandleEmpty 0# m1 m2
+union m1 m2
+  | sameMap m1 m2 = m1
+  | otherwise = unionAtShiftHandleEmpty 0# m1 m2
 
 {- | Merge two branch arrays by walking the union bitmap once.
 

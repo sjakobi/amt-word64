@@ -790,32 +790,32 @@ mergeWithKey ::
   Word64Map a ->
   Word64Map b ->
   Word64Map c
-mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
+mergeWithKey f g1 g2 m1_ m2_ = mergeAtShift 0# m1_ m2_
  where
-  go _ (Branch (BM 0) _) m2 = g2 m2
-  go _ m1 (Branch (BM 0) _) = g1 m1
-  go shift (Leaf k1 v1) (Leaf k2 v2)
+  mergeAtShift _ (Branch (BM 0) _) m2 = g2 m2
+  mergeAtShift _ m1 (Branch (BM 0) _) = g1 m1
+  mergeAtShift shift (Leaf k1 v1) (Leaf k2 v2)
     | k1 == k2 =
         case f k1 v1 v2 of
           Nothing -> empty
           Just v' -> Leaf k1 v'
     | otherwise =
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
-  go shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
+  mergeAtShift shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
     case index shift k1 (BM bm2) of
       Index _ _ NoMatch ->
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 m2)
       Index _ i Match ->
         let (newBm, newAry) = runST (mergeLeafVsBranch shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
-  go shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
+  mergeAtShift shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
     case index shift k2 (BM bm1) of
       Index _ _ NoMatch ->
         unionAtShiftHandleEmpty shift (g1 m1) (g2 (Leaf k2 v2))
       Index _ i Match ->
         let (newBm, newAry) = runST (mergeBranchVsLeaf shift k2 v2 bm1 ary1 i)
          in collapse (BM newBm) newAry
-  go shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
+  mergeAtShift shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =
     let (newBm, newAry) = runST (mergeWithKeyBranches shift bm1 ary1 bm2 ary2)
      in collapse (BM newBm) newAry
 
@@ -858,7 +858,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                       w' = clearLowBit w
                    in case (m1, m2) of
                         (Just c1, Just c2) ->
-                          let child = go (nextShift shift) c1 c2
+                          let child = mergeAtShift (nextShift shift) c1 c2
                            in if null child
                                 then step w' i1' i2' j newBm
                                 else do
@@ -906,7 +906,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                   child = indexSmallArray ary2 i
                   child' =
                     if i == iMatch
-                      then go (nextShift shift) (Leaf k1 v1) child
+                      then mergeAtShift (nextShift shift) (Leaf k1 v1) child
                       else g2 child
                   w' = clearLowBit w
                in if null child'
@@ -941,7 +941,7 @@ mergeWithKey f g1 g2 m1_ m2_ = go 0# m1_ m2_
                   child = indexSmallArray ary1 i
                   child' =
                     if i == iMatch
-                      then go (nextShift shift) child (Leaf k2 v2)
+                      then mergeAtShift (nextShift shift) child (Leaf k2 v2)
                       else g1 child
                   w' = clearLowBit w
                in if null child'

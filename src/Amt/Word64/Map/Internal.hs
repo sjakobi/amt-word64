@@ -563,16 +563,16 @@ delete :: Word64 -> Word64Map a -> Word64Map a
 delete !k = deleteAtShift 0# k
 
 deleteAtShift :: Shift -> Word64 -> Word64Map a -> Word64Map a
-deleteAtShift shift !k m = go shift m
+deleteAtShift shift !k m = delete_ shift m
  where
-  go _ (Leaf k' _) | k == k' = empty
-  go _ leaf@(Leaf _ _) = leaf
-  go s (Branch (BM bm) ary) =
+  delete_ _ (Leaf k' _) | k == k' = empty
+  delete_ _ leaf@(Leaf _ _) = leaf
+  delete_ s (Branch (BM bm) ary) =
     case index s k (BM bm) of
       Index _ _ NoMatch -> Branch (BM bm) ary
       Index (BM bit) i Match ->
         let child = indexSmallArray ary i
-            newChild = go (nextShift s) child
+            newChild = delete_ (nextShift s) child
          in if null newChild
               then
                 let newBm = bm .&. complement bit

@@ -80,6 +80,7 @@ import Test.QuickCheck.Classes.Base
 import Test.Tasty
 import Test.Tasty.QuickCheck
 import Text.Read (readListPrec, readPrec, readPrec_to_S)
+import Word64SetTests qualified as SetTests
 import Prelude hiding (filter, lookup, map, null)
 
 newtype K = K Word64
@@ -106,10 +107,13 @@ main :: IO ()
 main =
   defaultMain $
     testGroup
-      "Word64Map tests"
+      "amt-word64 tests"
       [ localOption (QuickCheckTests 1000) $
           localOption (QuickCheckMaxSize 500) tests
       , instanceTests
+      , localOption (QuickCheckTests 1000) $
+          localOption (QuickCheckMaxSize 500) SetTests.tests
+      , SetTests.instanceTests
       ]
 
 tests :: TestTree

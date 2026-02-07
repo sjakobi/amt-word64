@@ -63,7 +63,6 @@ import Data.Data
   , mkDataType
   )
 import Data.Foldable qualified as Foldable
-import Data.List qualified as List
 import Data.Primitive.SmallArray
 import Data.Word (Word64)
 import GHC.Exts
@@ -723,15 +722,15 @@ partition f m = go m
     step bm 0 0 0 0 0
 
 map :: (Word64 -> Word64) -> Word64Set -> Word64Set
--- TODO: Consider a direct fold-based map to avoid list allocation;
--- check the Map version too.
-map f = fromList . List.map f . toList
-
-mapMonotonic :: (Word64 -> Word64) -> Word64Set -> Word64Set
+map f = go empty
+ where
+  go !acc (Leaf k) = insertUnsafe (f k) acc
+  go !acc (Branch _ ary) = Foldable.foldl' go acc ary
 
 {- | Compatibility with GHC's Word64Set. Monotonicity does not make this
 faster than 'map' in this implementation.
 -}
+mapMonotonic :: (Word64 -> Word64) -> Word64Set -> Word64Set
 mapMonotonic = map
 
 isSubsetOf :: Word64Set -> Word64Set -> Bool

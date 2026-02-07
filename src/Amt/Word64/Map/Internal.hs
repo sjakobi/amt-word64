@@ -715,9 +715,8 @@ unionAtShiftNoEmpty shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
   (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2)
-    | bm1 == bm2
-    , sameSmallArray ary1 ary2 ->
-        Branch (BM bm1) ary1
+    | sameSmallArray ary1 ary2 ->
+        m1
     | otherwise ->
         let (newBm, newAry) =
               unionBranches
@@ -769,8 +768,9 @@ insertIfNotExistsAtShift shift !k v m = case m of
     case index shift k (BM bm) of
       Index _ i Match ->
         case indexSmallArray## ary i of
-          (# child #) ->
-            let newChild = insertIfNotExistsAtShift (nextShift shift) k v child
+          (# child0 #) ->
+            let !child = child0
+                !newChild = insertIfNotExistsAtShift (nextShift shift) k v child
              in if sameMapByReference child newChild
                   then branch
                   else Branch (BM bm) (updateAt i newChild ary)

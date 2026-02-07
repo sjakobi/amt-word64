@@ -758,6 +758,11 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExists !k v m = insertIfNotExistsAtShift 0# k v m
 
+{- | Insert the key/value only when the key is absent.
+
+Assumes the canonical empty map is represented as a 'Branch' with an empty
+bitmap (so an empty root is still a branch). Internal nodes are never empty.
+-}
 insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExistsAtShift shift !k v m = case m of
   Leaf k' v'

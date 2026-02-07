@@ -46,8 +46,6 @@ module Amt.Word64.Map.Lazy
   , assocs
   , foldrWithKey
   , foldlWithKey'
-  , valid
-  , InvariantViolation (..)
   ) where
 
 import Amt.Word64.Map.Internal

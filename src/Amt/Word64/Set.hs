@@ -26,8 +26,6 @@ module Amt.Word64.Set
   , fromList
   , toList
   , elems
-  , valid
-  , InvariantViolation (..)
   ) where
 
 import Amt.Word64.Set.Internal

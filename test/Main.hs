@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import Amt.Word64.Map.Internal qualified as MapInternal
 import Amt.Word64.Map.Lazy
   ( Word64Map
   , adjust
@@ -49,7 +50,6 @@ import Amt.Word64.Map.Lazy
   , unionWithKey
   , update
   , updateWithKey
-  , valid
   )
 import Data.Bits qualified as Bits
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
@@ -108,12 +108,18 @@ main =
   defaultMain $
     testGroup
       "amt-word64 tests"
-      [ localOption (QuickCheckTests 1000) $
-          localOption (QuickCheckMaxSize 500) tests
-      , instanceTests
-      , localOption (QuickCheckTests 1000) $
-          localOption (QuickCheckMaxSize 500) SetTests.tests
-      , SetTests.instanceTests
+      [ testGroup
+          "Map"
+          [ localOption (QuickCheckTests 1000) $
+              localOption (QuickCheckMaxSize 500) tests
+          , instanceTests
+          ]
+      , testGroup
+          "Set"
+          [ localOption (QuickCheckTests 1000) $
+              localOption (QuickCheckMaxSize 500) SetTests.tests
+          , SetTests.instanceTests
+          ]
       ]
 
 tests :: TestTree
@@ -384,7 +390,7 @@ lawsToTestTree (Laws name props) =
     ]
 
 checkValid :: Word64Map a -> Property
-checkValid m = case valid m of
+checkValid m = case MapInternal.valid m of
   Nothing -> property True
   Just err -> counterexample (show err) False
 

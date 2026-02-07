@@ -32,8 +32,8 @@ import Amt.Word64.Set
   , toList
   , union
   , unions
-  , valid
   )
+import Amt.Word64.Set.Internal qualified as SetInternal
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
 import Data.Functor.Identity (Identity (Identity))
 import Data.List qualified as L
@@ -225,7 +225,7 @@ lawsToTestTree (Laws name props) =
     ]
 
 checkValid :: Word64Set -> Property
-checkValid s = case valid s of
+checkValid s = case SetInternal.valid s of
   Nothing -> property True
   Just err -> counterexample (show err) False
 

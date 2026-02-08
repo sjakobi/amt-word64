@@ -8,6 +8,7 @@ import Amt.Word64.Map.Internal (Word64Map)
 import Amt.Word64.Map.Internal qualified as MapInternal
 import Amt.Word64.Map.Lazy qualified as Lazy
 import Amt.Word64.Map.Strict qualified as Strict
+import Control.Exception (SomeException, evaluate, try)
 import Data.Bits qualified as Bits
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
 import Data.Functor.Classes
@@ -343,7 +344,7 @@ word64MapTests =
   testGroup
     "Word64Map tests"
     [ testGroup "Lazy" (mapTests lazyOps)
-    , testGroup "Strict" (mapTests strictOps)
+    , testGroup "Strict" (mapTests strictOps <> strictnessTests)
     ]
 
 mapTests :: MapOps -> [TestTree]
@@ -1218,6 +1219,26 @@ mapTests MapOps{..} =
         m2 = fromKList e2
      in mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2
           === differenceWith f m1 m2
+
+strictnessTests :: [TestTree]
+strictnessTests =
+  [ testGroup
+      "Strictness"
+      [ testProperty "insert forces WHNF" prop_strict_insert_whnf
+      ]
+  ]
+
+prop_strict_insert_whnf :: K -> Property
+prop_strict_insert_whnf k = ioProperty $ do
+  result <-
+    try
+      ( evaluate
+          (Strict.insert (toWord64 k) (error "strict insert should force") Strict.empty)
+      )
+  pure $ case result of
+    Left (_ :: SomeException) -> property True
+    Right _ -> property False
+
 instanceTests :: TestTree
 instanceTests =
   testGroup

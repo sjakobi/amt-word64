@@ -1,5 +1,11 @@
 {-# LANGUAGE BangPatterns #-}
 
+{- | Strict API for 'Word64Map'.
+
+Property: If all values stored in all maps in the arguments are in
+WHNF, then all values stored in all maps in the results will be in
+WHNF once those maps are evaluated.
+-}
 module Amt.Word64.Map.Strict
   ( Word64Map
   , empty

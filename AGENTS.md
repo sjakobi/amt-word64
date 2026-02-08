@@ -178,6 +178,10 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
   ```bash
   sed -n '5000,5100p' path/to/Internal.dump-simpl
   ```
+- **Check open review threads**: Use the PR comments API for line-level feedback and resolution status.
+  ```bash
+  gh api repos/<owner>/<repo>/pulls/<pr>/comments
+  ```
 
 ### Performance Tips
 - **Boxing**: Check if arguments like `Shift` (Int) are being re-boxed in recursive calls (e.g., `(I# (+# i# 6#))`). Use bang patterns `!s` to encourage unboxing.

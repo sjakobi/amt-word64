@@ -2,6 +2,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UnboxedTuples #-}
 
 module Amt.Word64.Map.Internal
   ( Word64Map (..)
@@ -17,7 +18,6 @@ module Amt.Word64.Map.Internal
   , insert
   , insertWith
   , insertWithKey
-  , insertIfNotExists
   , delete
   , adjust
   , adjustWithKey
@@ -102,6 +102,7 @@ import GHC.Exts
   ( Word64#
   , eqWord64#
   , isTrue#
+  , reallyUnsafePtrEquality
   , sameSmallArray#
   )
 import GHC.Exts qualified as Exts
@@ -182,6 +183,19 @@ sameSmallArray :: SmallArray a -> SmallArray a -> Bool
 sameSmallArray (SmallArray a1#) (SmallArray a2#) =
   isTrue# (sameSmallArray# a1# a2#)
 {-# INLINE sameSmallArray #-}
+
+{- | Pointer equality for 'Word64Map' values.
+
+Best when both maps are already in WHNF; otherwise this can return False
+for equal but unevaluated thunks. Use only for sharing/fast-paths.
+-}
+sameMap :: Word64Map a -> Word64Map a -> Bool
+sameMap m1 m2 = isTrue# (reallyUnsafePtrEquality m1 m2)
+{-# INLINE sameMap #-}
+
+sameValue :: a -> a -> Bool
+sameValue x y = isTrue# (reallyUnsafePtrEquality x y)
+{-# INLINE sameValue #-}
 
 instance Ord a => Ord (Word64Map a) where
   compare m1 m2 = compare (toList m1) (toList m2)
@@ -497,20 +511,27 @@ deleteAtShift shift !k m = del shift m
  where
   del _ (Leaf k' _) | k == k' = empty
   del _ leaf@(Leaf _ _) = leaf
-  del s (Branch (BM bm) ary) =
+  del s branch@(Branch (BM bm) ary) =
     case index s k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
+      Index _ _ NoMatch -> branch
       Index (BM bit) i Match ->
-        let child = indexSmallArray ary i
-            newChild = del (nextShift s) child
-         in if null newChild
-              then
-                let newBm = bm .&. complement bit
-                    newAry = removeAt i ary
-                 in collapse (BM newBm) newAry
-              else
-                let newAry = updateAt i newChild ary
-                 in collapse (BM bm) newAry
+        case indexSmallArray## ary i of
+          (# child0 #) ->
+            -- TODO: Verify whether array elements are always in WHNF so we can
+            -- drop the bang on child/newChild here.
+            let !child = child0
+                !newChild = del (nextShift s) child
+             in if sameMap child newChild
+                  then branch
+                  else
+                    if null newChild
+                      then
+                        let newBm = bm .&. complement bit
+                            newAry = removeAt i ary
+                         in collapse (BM newBm) newAry
+                      else
+                        let newAry = updateAt i newChild ary
+                         in collapse (BM bm) newAry
 
 adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f !k m = adjustWithKey (\_ x -> f x) k m
@@ -518,16 +539,29 @@ adjust f !k m = adjustWithKey (\_ x -> f x) k m
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjustWithKey f !k m = adj 0# m
  where
-  adj _ (Leaf k' v)
-    | k == k' = Leaf k (f k v)
-    | otherwise = Leaf k' v
-  adj shift (Branch (BM bm) ary) =
+  adj _ leaf@(Leaf k' v)
+    | k == k' =
+        let v' = f k v
+         in -- sjakobi, 2026-02-08
+            -- Since v' isn't forced, will this condition ever be true under
+            -- non-contrived circumstances?
+            if sameValue v v'
+              then leaf
+              else Leaf k v'
+    | otherwise = leaf
+  adj shift branch@(Branch (BM bm) ary) =
     case index shift k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
+      Index _ _ NoMatch -> branch
       Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = adj (nextShift shift) child
-         in Branch (BM bm) (updateAt i newChild ary)
+        case indexSmallArray## ary i of
+          (# child0 #) ->
+            -- TODO: Verify whether array elements are always in WHNF so we can
+            -- drop the bang on child/newChild here.
+            let !child = child0
+                !newChild = adj (nextShift shift) child
+             in if sameMap child newChild
+                  then branch
+                  else Branch (BM bm) (updateAt i newChild ary)
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
 update f !k m = updateWithKey (\_ x -> f x) k m
@@ -610,16 +644,19 @@ unionAtShiftHandleEmpty shift m1 m2 = case (m1, m2) of
 unionAtShiftNoEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShiftNoEmpty shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
-  (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
-  (Branch (BM bm1) ary1, Branch (BM bm2) ary2) ->
-    let (newBm, newAry) =
-          unionBranches
-            bm1
-            ary1
-            bm2
-            ary2
-            (unionAtShiftNoEmpty (nextShift shift))
-     in collapse (BM newBm) newAry
+  (_, Leaf k2 v2) -> insertIfNotExistsAtShiftNoEmpty shift k2 v2 m1
+  (Branch (BM bm1) ary1, Branch (BM bm2) ary2)
+    | sameSmallArray ary1 ary2 ->
+        m1
+    | otherwise ->
+        let (newBm, newAry) =
+              unionBranches
+                bm1
+                ary1
+                bm2
+                ary2
+                (unionAtShiftNoEmpty (nextShift shift))
+         in collapse (BM newBm) newAry
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith f = unionWithKey (\_ x y -> f x y)
@@ -650,20 +687,29 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
             (unionWithKeyAtShift (nextShift shift) f)
      in collapse (BM newBm) newAry
 
-insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExists !k v m = insertIfNotExistsAtShift 0# k v m
+{- | Insert the key/value only when the key is absent.
 
-insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExistsAtShift shift !k v m = case m of
+Precondition: the map is non-empty. Callers that might see the canonical empty
+root must special-case it before invoking this helper.
+-}
+insertIfNotExistsAtShiftNoEmpty ::
+  Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertIfNotExistsAtShiftNoEmpty shift !k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'
-  Branch (BM bm) ary ->
+  branch@(Branch (BM bm) ary) ->
     case index shift k (BM bm) of
       Index _ i Match ->
-        let child = indexSmallArray ary i
-            newChild = insertIfNotExistsAtShift (nextShift shift) k v child
-         in Branch (BM bm) (updateAt i newChild ary)
+        case indexSmallArray## ary i of
+          (# child0 #) ->
+            -- TODO: Verify whether array elements are always in WHNF so we can
+            -- drop the bang on child/newChild here.
+            let !child = child0
+                !newChild = insertIfNotExistsAtShiftNoEmpty (nextShift shift) k v child
+             in if sameMap child newChild
+                  then branch
+                  else Branch (BM bm) (updateAt i newChild ary)
       Index (BM bit) i NoMatch ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
@@ -704,6 +750,8 @@ removeAt i ary = runSmallArray $ do
   copySmallArray mary i ary (i + 1) (n - i - 1)
   return mary
 
+-- TODO: Avoid calling collapse in hot paths like delete by handling single-child
+-- branches directly to preserve sharing and reduce work.
 collapse :: Bitmap -> SmallArray (Word64Map a) -> Word64Map a
 collapse bm ary = case sizeofSmallArray ary of
   0 -> empty

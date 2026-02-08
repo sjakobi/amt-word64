@@ -348,6 +348,7 @@ tests =
     , testGroup
         "isSubmapOfBy"
         [ testProperty "matches Data.Map" prop_isSubmapOfBy_model
+        , testProperty "self predicate" prop_isSubmapOfBy_self
         ]
     ]
 
@@ -1012,6 +1013,15 @@ prop_isSubmapOfBy_model e1 e2 =
       ref1 = Map.fromList e1
       ref2 = Map.fromList e2
    in isSubmapOfBy f m1 m2 === Map.isSubmapOfBy f ref1 ref2
+
+-- This fails when we accidentally introduce pointer-equality checking
+-- in isSubmapOfBy!
+prop_isSubmapOfBy_self :: [(K, Int)] -> Property
+prop_isSubmapOfBy_self entries =
+  let f x _ = even x
+      m = fromKList entries
+      ref = Map.fromList entries
+   in isSubmapOfBy f m m === Map.isSubmapOfBy f ref ref
 
 prop_mergeWithKey_model :: [(K, Int)] -> [(K, Int)] -> Property
 prop_mergeWithKey_model e1 e2 =

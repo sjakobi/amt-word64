@@ -18,7 +18,6 @@ module Amt.Word64.Map.Internal
   , insert
   , insertWith
   , insertWithKey
-  , insertIfNotExists
   , delete
   , adjust
   , adjustWithKey
@@ -754,11 +753,6 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
             ary2
             (unionWithKeyAtShift (nextShift shift) f)
      in collapse (BM newBm) newAry
-
-insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExists !k v m = case m of
-  Branch (BM 0) _ -> Leaf k v
-  _ -> insertIfNotExistsAtShiftNoEmpty 0# k v m
 
 {- | Insert the key/value only when the key is absent.
 

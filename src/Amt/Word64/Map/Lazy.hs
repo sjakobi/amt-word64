@@ -7,7 +7,6 @@ module Amt.Word64.Map.Lazy
   , insert
   , insertWith
   , insertWithKey
-  , insertIfNotExists
   , delete
   , adjust
   , adjustWithKey

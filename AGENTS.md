@@ -56,11 +56,15 @@ Example: `CABAL_DIR=/tmp/cabal cabal build`
 6. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
 7. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations. This permission is explicitly confirmed and should be treated as durable for this repo.
 8. **Command Permissions**: Do not ask before creating commits on feature branches. You have standing permission to run non-destructive git commands (`status`, `log`, `diff`, `add`, `stash`, `switch`, `fetch`, `push`, `rebase`, `worktree add/remove`). You may also run standard build/test commands (`cabal build`, `cabal run tests -- --hide-successes`, `cabal run`, `cabal clean`) and formatting (`fourmolu --mode inplace src test`) without asking. For network calls, `gh` is permitted for PR creation and review fetching, provided it does not perform destructive operations. Ask before running destructive commands like `reset --hard`, `checkout --`, or rewriting remote history unless explicitly requested.
-9. **Commit Message Format**: Keep lines under 72 characters. Use a short subject line, then include an explanatory paragraph when the change is non-trivial or benefits from context; use judgement for small changes. In the footer, include a single `Model:` line with the explicit model string (e.g. `GPT-4`). When writing commits from the CLI, use multiple `-m` flags or a heredoc so newlines are real and not escaped `\\n`. Example:
+9. **Commit Message Format**: Keep lines under 72 characters. Use a short subject line, then include an explanatory paragraph when the change is non-trivial or benefits from context; use judgement for small changes. In the footer, include a single `Model:` line with the explicit model string (e.g. `GPT-4`). All commits must be created via a *quoted heredoc* passed to `git commit -F -` so newlines are real and never escaped. Example:
    ```bash
-   git commit -m "Subject line" \
-     -m $'Explanation with a paragraph that spans\\nmultiple lines without literal \\\\n escapes.' \
-     -m "Model: GPT-5"
+   git commit -F - <<'EOF'
+   Subject line
+
+   Explanation wrapped to 72 columns.
+
+   Model: GPT-5
+   EOF
    ```
    ```
    Subject line

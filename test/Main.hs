@@ -51,6 +51,7 @@ import Amt.Word64.Map.Lazy
   , update
   , updateWithKey
   )
+import Control.Exception (ErrorCall (..), evaluate, try)
 import Data.Bits qualified as Bits
 import Data.Data (cast, dataTypeConstrs, dataTypeOf, gmapQi, toConstr)
 import Data.Functor.Classes
@@ -102,6 +103,10 @@ fromWord64 = K
 
 fromKList :: [(K, a)] -> Word64Map a
 fromKList = fromList . L.map (\(k, v) -> (toWord64 k, v))
+
+adjustWithKeyId :: Word64 -> Word64Map Int -> Word64Map Int
+adjustWithKeyId = adjustWithKey (\_ x -> x)
+{-# INLINE adjustWithKeyId #-}
 
 main :: IO ()
 main =
@@ -231,6 +236,7 @@ tests =
         "adjustWithKey"
         [ testProperty "matches Data.Map" prop_adjustWithKey_model
         , testProperty "valid invariant" prop_adjustWithKey_valid
+        , testProperty "hits sameValue" prop_adjustWithKey_sameValue_hit
         ]
     , testGroup
         "update"
@@ -382,6 +388,9 @@ instanceTests =
 
 toSortedList :: Word64Map a -> [(K, a)]
 toSortedList = L.sortOn fst . L.map (\(k, v) -> (fromWord64 k, v)) . toList
+
+sameValueError :: String
+sameValueError = "adjustWithKey: sameValue"
 
 lawsToTestTree :: Laws -> TestTree
 lawsToTestTree (Laws name props) =
@@ -663,6 +672,27 @@ prop_adjustWithKey_valid entries k =
             (toWord64 k)
             (fromKList entries)
         )
+
+prop_adjustWithKey_sameValue_hit :: Property
+prop_adjustWithKey_sameValue_hit =
+  checkCoverage $
+    forAll (listOf1 (arbitrary :: Gen (K, Int))) $ \entries ->
+      forAll (elements (L.map fst entries)) $ \k ->
+        ioProperty $ do
+          let entries' = L.map (\(k', v) -> v `seq` (k', v)) entries
+              m = fromKList entries'
+              key = toWord64 k
+          r <- try (evaluate (adjustWithKeyId key m))
+          let hit = case r of
+                Left (ErrorCall msg) -> msg == sameValueError
+                Right _ -> False
+              prop = case r of
+                Left (ErrorCall msg)
+                  | msg == sameValueError -> property True
+                  | otherwise ->
+                      counterexample ("unexpected error: " <> msg) False
+                Right _ -> property True
+          pure $ cover 1 hit "sameValue hit" prop
 
 prop_update_model :: [(K, Int)] -> K -> Property
 prop_update_model entries k =

@@ -537,6 +537,7 @@ adjust :: (a -> a) -> Word64 -> Word64Map a -> Word64Map a
 adjust f !k m = adjustWithKey (\_ x -> f x) k m
 
 adjustWithKey :: (Word64 -> a -> a) -> Word64 -> Word64Map a -> Word64Map a
+{-# INLINE adjustWithKey #-}
 adjustWithKey f !k m = adj 0# m
  where
   adj _ leaf@(Leaf k' v)
@@ -546,7 +547,7 @@ adjustWithKey f !k m = adj 0# m
             -- Since v' isn't forced, will this condition ever be true under
             -- non-contrived circumstances?
             if sameValue v v'
-              then leaf
+              then error "adjustWithKey: sameValue"
               else Leaf k v'
     | otherwise = leaf
   adj shift branch@(Branch (BM bm) ary) =

@@ -760,14 +760,16 @@ insertIfNotExists !k v m = insertIfNotExistsAtShift 0# k v m
 
 {- | Insert the key/value only when the key is absent.
 
-Assumes the canonical empty map is represented as a 'Branch' with an empty
-bitmap (so an empty root is still a branch). Internal nodes are never empty.
+If called on the canonical empty root (a 'Branch' with an empty bitmap),
+this returns a 'Leaf' to avoid introducing a redundant single-child branch.
+Internal nodes are never empty.
 -}
 insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
 insertIfNotExistsAtShift shift !k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'
+  Branch (BM 0) _ -> Leaf k v
   branch@(Branch (BM bm) ary) ->
     case index shift k (BM bm) of
       Index _ i Match ->

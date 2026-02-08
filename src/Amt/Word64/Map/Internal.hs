@@ -612,7 +612,10 @@ adjustWithKey f !k m = adj 0# m
   adj _ leaf@(Leaf k' v)
     | k == k' =
         let v' = f k v
-         in if sameValue v v'
+         in -- sjakobi, 2026-02-08
+            -- Since v' isn't forced, will this condition ever be true under
+            -- non-contrived circumstances?
+            if sameValue v v'
               then leaf
               else Leaf k v'
     | otherwise = leaf

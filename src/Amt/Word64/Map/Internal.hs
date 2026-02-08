@@ -712,7 +712,7 @@ unionAtShiftHandleEmpty shift m1 m2 = case (m1, m2) of
 unionAtShiftNoEmpty :: Shift -> Word64Map a -> Word64Map a -> Word64Map a
 unionAtShiftNoEmpty shift m1 m2 = case (m1, m2) of
   (Leaf k1 v1, _) -> insertAtShift shift k1 v1 m2
-  (_, Leaf k2 v2) -> insertIfNotExistsAtShift shift k2 v2 m1
+  (_, Leaf k2 v2) -> insertIfNotExistsAtShiftNoEmpty shift k2 v2 m1
   (Branch (BM bm1) ary1, Branch (BM bm2) ary2)
     | sameSmallArray ary1 ary2 ->
         m1
@@ -756,20 +756,21 @@ unionWithKeyAtShift shift f m1 m2 = case (m1, m2) of
      in collapse (BM newBm) newAry
 
 insertIfNotExists :: Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExists !k v m = insertIfNotExistsAtShift 0# k v m
+insertIfNotExists !k v m = case m of
+  Branch (BM 0) _ -> Leaf k v
+  _ -> insertIfNotExistsAtShiftNoEmpty 0# k v m
 
 {- | Insert the key/value only when the key is absent.
 
-If called on the canonical empty root (a 'Branch' with an empty bitmap),
-this returns a 'Leaf' to avoid introducing a redundant single-child branch.
-Internal nodes are never empty.
+Precondition: the map is non-empty. Callers that might see the canonical empty
+root must special-case it before invoking this helper.
 -}
-insertIfNotExistsAtShift :: Shift -> Word64 -> a -> Word64Map a -> Word64Map a
-insertIfNotExistsAtShift shift !k v m = case m of
+insertIfNotExistsAtShiftNoEmpty ::
+  Shift -> Word64 -> a -> Word64Map a -> Word64Map a
+insertIfNotExistsAtShiftNoEmpty shift !k v m = case m of
   Leaf k' v'
     | k == k' -> m
     | otherwise -> two shift k v k' v'
-  Branch (BM 0) _ -> Leaf k v
   branch@(Branch (BM bm) ary) ->
     case index shift k (BM bm) of
       Index _ i Match ->
@@ -778,7 +779,7 @@ insertIfNotExistsAtShift shift !k v m = case m of
             -- TODO: Verify whether array elements are always in WHNF so we can
             -- drop the bang on child/newChild here.
             let !child = child0
-                !newChild = insertIfNotExistsAtShift (nextShift shift) k v child
+                !newChild = insertIfNotExistsAtShiftNoEmpty (nextShift shift) k v child
              in if sameMap child newChild
                   then branch
                   else Branch (BM bm) (updateAt i newChild ary)

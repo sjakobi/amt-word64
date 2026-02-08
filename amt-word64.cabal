@@ -62,6 +62,7 @@ library
     exposed-modules:
         Amt.Word64.Map,
         Amt.Word64.Map.Lazy,
+        Amt.Word64.Map.Strict,
         Amt.Word64.Map.Internal,
         Amt.Word64.Set,
         Amt.Word64.Set.Internal,

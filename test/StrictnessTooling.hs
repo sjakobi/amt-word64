@@ -41,9 +41,8 @@ tests =
         prop_strict_fromList_whnf
     , testProperty "Strict.adjust forces WHNF values" $
         prop_strict_adjust_whnf
-    , expectFail $
-        testProperty "Strict.insert forces WHNF values" $
-          prop_strict_insert_whnf_values
+    , testProperty "Strict.insert forces WHNF values" $
+        prop_strict_insert_whnf_values
     ]
 
 prop_strict_insert_whnf_values :: [(Word64, Int)] -> Word64 -> Int -> Property
@@ -56,8 +55,7 @@ prop_strict_insert_whnf_values entries k v = ioProperty $ do
     then error "Expected a thunk for Strict.insert input, but got WHNF"
     else do
       let m1 = Strict.insert k vThunk m0
-      oks <- traverse isWhnfInt m1
-      pure (and oks)
+      allWhnfMap m1
 
 prop_strict_singleton_whnf :: Word64 -> Int -> Property
 prop_strict_singleton_whnf k v = ioProperty $ do
@@ -67,7 +65,6 @@ prop_strict_singleton_whnf k v = ioProperty $ do
     then error "Expected a thunk for Strict.singleton input, but got WHNF"
     else do
       let m = Strict.singleton k vThunk
-      m `seq` pure ()
       allWhnfMap m
 
 prop_strict_fromList_whnf :: [(Word64, Int)] -> Property
@@ -83,7 +80,7 @@ prop_strict_fromList_whnf entries = ioProperty $ do
         then error "Expected a thunk for Strict.fromList input, but got WHNF"
         else do
           let m = Strict.fromList entriesThunk
-          m `seq` allWhnfMap m
+          allWhnfMap m
 
 prop_strict_adjust_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_adjust_whnf entries k v = ioProperty $ do
@@ -97,7 +94,7 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
     then error "Expected a thunk for Strict.adjust result, but got WHNF"
     else do
       let m1 = Strict.adjust (\_ -> vThunk) k m0
-      m1 `seq` allWhnfMap m1
+      allWhnfMap m1
 
 prop_forced_int_whnf :: Int -> Property
 prop_forced_int_whnf n = ioProperty $ do

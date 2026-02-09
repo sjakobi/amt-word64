@@ -115,6 +115,7 @@ test-suite amt-word64-test
         base >=4.20 && <4.23,
         amt-word64,
         containers,
+        deepseq,
         nothunks,
         QuickCheck,
         quickcheck-classes-base,

@@ -327,15 +327,13 @@ main =
       "amt-word64 tests"
       [ testGroup
           "Map"
-          [ localOption (QuickCheckTests 1000) $
-              localOption (QuickCheckMaxSize 500) word64MapTests
+          [ localOption (QuickCheckMaxSize 500) word64MapTests
           , instanceTests
           ]
       , StrictnessTooling.tests
       , testGroup
           "Set"
-          [ localOption (QuickCheckTests 1000) $
-              localOption (QuickCheckMaxSize 500) SetTests.tests
+          [ localOption (QuickCheckMaxSize 500) SetTests.tests
           , SetTests.instanceTests
           ]
       ]

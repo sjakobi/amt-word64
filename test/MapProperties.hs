@@ -3,9 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module MapProperties
-  ( K (..)
-  , fromKListInternal
-  , word64MapTests
+  ( word64MapTests
   ) where
 
 import Amt.Word64.Map.Internal (Word64Map)
@@ -18,27 +16,8 @@ import Data.Map.Strict qualified as Map
 import Data.Word (Word64)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck
+import TestUtils (K (..), fromWord64, toWord64)
 import Prelude hiding (filter, lookup, map, null)
-
-newtype K = K Word64
-  deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
-
-instance Arbitrary K where
-  arbitrary = K . getLarge <$> arbitrary
-  shrink (K w) = K <$> shrink w
-
-instance Arbitrary a => Arbitrary (Word64Map a) where
-  arbitrary = fromKListInternal <$> arbitrary
-  shrink m = fromKListInternal <$> shrink (toSortedListInternal m)
-
-toWord64 :: K -> Word64
-toWord64 (K w) = w
-
-fromWord64 :: Word64 -> K
-fromWord64 = K
-
-fromKListInternal :: [(K, a)] -> Word64Map a
-fromKListInternal = MapInternal.fromList . L.map (\(k, v) -> (toWord64 k, v))
 
 data MapOps = MapOps
   { empty :: forall a. Word64Map a
@@ -1179,12 +1158,6 @@ mapTests MapOps{..} =
         m2 = fromKList e2
      in mergeWithKey (\_ x y -> f x y) id (const empty) m1 m2
           === differenceWith f m1 m2
-
-toSortedListInternal :: Word64Map a -> [(K, a)]
-toSortedListInternal =
-  L.sortOn fst
-    . L.map (\(k, v) -> (fromWord64 k, v))
-    . MapInternal.toList
 
 checkValid :: Word64Map a -> Property
 checkValid m = case MapInternal.valid m of

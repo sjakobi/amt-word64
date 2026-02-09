@@ -99,6 +99,7 @@ test-suite amt-word64-test
         MapProperties
         MapStrictness
         StrictnessTooling
+        TestUtils
         Word64SetTests
 
     -- LANGUAGE extensions used by modules in this package.

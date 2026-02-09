@@ -13,7 +13,6 @@ import Data.Functor.Classes
   )
 import Data.Maybe (listToMaybe)
 import Data.Proxy (Proxy (Proxy))
-import MapProperties (K, fromKListInternal)
 import Test.QuickCheck.Classes.Base
   ( Laws (Laws)
   , eqLaws
@@ -29,6 +28,7 @@ import Test.QuickCheck.Classes.Base
   )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Property, property, testProperty)
+import TestUtils (K, fromKListInternal)
 import Text.Read (readListPrec, readPrec, readPrec_to_S)
 
 instanceTests :: TestTree

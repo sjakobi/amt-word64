@@ -225,3 +225,4 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - `localOption` comes from `Test.Tasty`, not `Test.Tasty.QuickCheck`. Keep imports accordingly in test runners.
 - `isWhnfInt` uses `noThunks` and returns `False` on exceptions; `mkThunk` is exported from `StrictnessTooling` and uses `GHC.Exts.lazy`.
 - When enabling Core dumps for a specific test module, `cabal build` may not emit `.dump-simpl` for test-only modules; using `cabal exec -- ghc -ddump-simpl -ddump-to-file -package amt-word64 test/Module.hs` generates dumps reliably.
+- Shared test utilities live in `test/TestUtils.hs`. Use `kListToLazyMap` and `toSortedKList` for K-list conversions instead of duplicating helpers.

@@ -1,4 +1,4 @@
-module Instances
+module MapInstances
   ( instanceTests
   ) where
 

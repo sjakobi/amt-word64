@@ -219,7 +219,7 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 
 - Test code is now split into modules.
 - `test/MapProperties.hs` holds map operation properties and exports `word64MapTests` plus `K`/`fromKListInternal`.
-- `test/Instances.hs` holds instance law tests and exports `instanceTests`.
+- `test/MapInstances.hs` holds instance law tests and exports `instanceTests`.
 - `test/MapStrictness.hs` holds strictness properties for `Map.Strict` and imports tooling from `StrictnessTooling`.
 - `test/StrictnessTooling.hs` is only for tooling utilities (`isWhnfInt`, `mkThunk`, and their property tests).
 - `localOption` comes from `Test.Tasty`, not `Test.Tasty.QuickCheck`. Keep imports accordingly in test runners.

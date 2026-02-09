@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Instances qualified
+import MapInstances qualified
 import MapProperties qualified
 import MapStrictness qualified
 import StrictnessTooling qualified
@@ -16,7 +16,7 @@ main =
       [ testGroup
           "Map"
           [ localOption (QuickCheckMaxSize 500) MapProperties.word64MapTests
-          , Instances.instanceTests
+          , MapInstances.instanceTests
           ]
       , MapStrictness.tests
       , StrictnessTooling.tests

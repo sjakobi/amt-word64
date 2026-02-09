@@ -115,7 +115,7 @@ singleton :: Word64 -> a -> Word64Map a
 singleton !k v = I.singleton k (force v)
 
 insert :: Word64 -> a -> Word64Map a -> Word64Map a
-insert !k v m = I.insert k (force v) m
+insert !k !v m = I.insert k v m
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
 insertWith f !k v m =

@@ -50,7 +50,7 @@ prop_strict_insert_whnf_values entries k v = ioProperty $ do
     then error "Expected a thunk for Strict.insert input, but got WHNF"
     else do
       let m1 = Strict.insert k vThunk m0
-      oks <- traverse (isWhnfInt . snd) (Strict.toList m1)
+      oks <- traverse isWhnfInt m1
       pure (and oks)
 
 prop_forced_int_whnf :: Int -> Property

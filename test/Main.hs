@@ -21,6 +21,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Word (Word64)
+import StrictnessTooling qualified
 import Test.QuickCheck.Classes.Base
   ( Laws (Laws)
   , eqLaws
@@ -330,6 +331,7 @@ main =
               localOption (QuickCheckMaxSize 500) word64MapTests
           , instanceTests
           ]
+      , StrictnessTooling.tests
       , testGroup
           "Set"
           [ localOption (QuickCheckTests 1000) $

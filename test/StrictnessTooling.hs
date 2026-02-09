@@ -33,6 +33,10 @@ tests =
     , testProperty "forced Int is WHNF" $
         ioProperty $
           isWhnfInt (42 :: Int)
+    , testProperty "mkThunk is lazy" $
+        ioProperty $ do
+          ok <- isWhnfInt (mkThunk (error "mkThunk: lazy"))
+          pure (not ok)
     , expectFail $
         testProperty "Strict.insert forces WHNF values" $
           prop_strict_insert_whnf_values

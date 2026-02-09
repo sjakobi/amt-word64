@@ -1,9 +1,9 @@
 module TestUtils
   ( K (..)
-  , fromKListInternal
+  , kListToLazyMap
   , fromWord64
   , toWord64
-  , toSortedListInternal
+  , toSortedKList
   ) where
 
 import Amt.Word64.Map.Internal (Word64Map)
@@ -20,8 +20,8 @@ instance Arbitrary K where
   shrink (K w) = K <$> shrink w
 
 instance Arbitrary a => Arbitrary (Word64Map a) where
-  arbitrary = fromKListInternal <$> arbitrary
-  shrink m = fromKListInternal <$> shrink (toSortedListInternal m)
+  arbitrary = kListToLazyMap <$> arbitrary
+  shrink m = kListToLazyMap <$> shrink (toSortedKList m)
 
 toWord64 :: K -> Word64
 toWord64 (K w) = w
@@ -29,11 +29,11 @@ toWord64 (K w) = w
 fromWord64 :: Word64 -> K
 fromWord64 = K
 
-fromKListInternal :: [(K, a)] -> Word64Map a
-fromKListInternal = MapInternal.fromList . L.map (\(k, v) -> (toWord64 k, v))
+kListToLazyMap :: [(K, a)] -> Word64Map a
+kListToLazyMap = MapInternal.fromList . L.map (\(k, v) -> (toWord64 k, v))
 
-toSortedListInternal :: Word64Map a -> [(K, a)]
-toSortedListInternal =
+toSortedKList :: Word64Map a -> [(K, a)]
+toSortedKList =
   L.sortOn fst
     . L.map (\(k, v) -> (fromWord64 k, v))
     . MapInternal.toList

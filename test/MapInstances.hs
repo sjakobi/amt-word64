@@ -28,7 +28,7 @@ import Test.QuickCheck.Classes.Base
   )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Property, property, testProperty)
-import TestUtils (K, fromKListInternal)
+import TestUtils (K, kListToLazyMap)
 import Text.Read (readListPrec, readPrec, readPrec_to_S)
 
 instanceTests :: TestTree
@@ -68,37 +68,37 @@ lawsToTestTree (Laws name props) =
 
 prop_data_gmapQi :: [(K, Int)] -> Property
 prop_data_gmapQi xs =
-  let m = fromKListInternal xs
+  let m = kListToLazyMap xs
    in property $ gmapQi 0 cast m == Just (MapInternal.toList m)
 
 prop_data_toConstr :: [(K, Int)] -> Property
 prop_data_toConstr xs =
-  let m = fromKListInternal xs
+  let m = kListToLazyMap xs
       dt = dataTypeOf m
    in property $ Just (toConstr m) == listToMaybe (dataTypeConstrs dt)
 
 prop_eq1_liftEq :: [(K, Int)] -> [(K, Int)] -> Property
 prop_eq1_liftEq xs ys =
-  let m1 = fromKListInternal xs
-      m2 = fromKListInternal ys
+  let m1 = kListToLazyMap xs
+      m2 = kListToLazyMap ys
    in property $ liftEq (==) m1 m2 == (m1 == m2)
 
 prop_ord1_liftCompare :: [(K, Int)] -> [(K, Int)] -> Property
 prop_ord1_liftCompare xs ys =
-  let m1 = fromKListInternal xs
-      m2 = fromKListInternal ys
+  let m1 = kListToLazyMap xs
+      m2 = kListToLazyMap ys
    in property $ liftCompare compare m1 m2 == compare m1 m2
 
 prop_show1_matches_show :: [(K, Int)] -> Property
 prop_show1_matches_show xs =
-  let m = fromKListInternal xs
+  let m = kListToLazyMap xs
       s1 = liftShowsPrec showsPrec showList 0 m ""
       s2 = showsPrec 0 m ""
    in property $ s1 == s2
 
 prop_read1_roundtrip :: [(K, Int)] -> Property
 prop_read1_roundtrip xs =
-  let m = fromKListInternal xs
+  let m = kListToLazyMap xs
       s = showsPrec 0 m ""
       parses = readPrec_to_S (liftReadPrec readPrec readListPrec) 0 s
    in property $ any ((== m) . fst) parses

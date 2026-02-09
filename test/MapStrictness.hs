@@ -75,5 +75,11 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
       let m1 = Strict.adjust (\_ -> vThunk) k m0
       allWhnfMap m1
 
+-- TODO: This forces the spine of the map.
+-- It would be interesting to have a way to check the values without
+-- forcing the spine.
+--
+-- Something like this maybe?!
+-- https://stackoverflow.com/a/28687719/1013393
 allWhnfMap :: Strict.Word64Map Int -> IO Bool
 allWhnfMap m = and <$> traverse isWhnfInt m

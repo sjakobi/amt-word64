@@ -5,8 +5,7 @@ module MapStrictness
 import Amt.Word64.Map.Strict qualified as Strict
 import Control.DeepSeq (deepseq)
 import Data.Word (Word64)
-import GHC.Exts (lazy)
-import StrictnessTooling (isWhnfInt)
+import StrictnessTooling (isWhnfInt, mkThunk)
 import Test.QuickCheck (Property)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (ioProperty, testProperty)
@@ -15,9 +14,7 @@ tests :: TestTree
 tests =
   testGroup
     "Map.Strict strictness"
-    [ testProperty "mkThunk creates a thunk" $
-        prop_mkThunk_lazy
-    , testProperty "Strict.singleton forces WHNF values" $
+    [ testProperty "Strict.singleton forces WHNF values" $
         prop_strict_singleton_whnf
     , testProperty "Strict.fromList forces WHNF values" $
         prop_strict_fromList_whnf
@@ -77,15 +74,6 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
     else do
       let m1 = Strict.adjust (\_ -> vThunk) k m0
       allWhnfMap m1
-
-prop_mkThunk_lazy :: Int -> Property
-prop_mkThunk_lazy n = ioProperty $ do
-  ok <- isWhnfInt (mkThunk n)
-  pure (not ok)
-
-{-# NOINLINE mkThunk #-}
-mkThunk :: Int -> Int
-mkThunk ~x = lazy x
 
 allWhnfMap :: Strict.Word64Map Int -> IO Bool
 allWhnfMap m = and <$> traverse isWhnfInt m

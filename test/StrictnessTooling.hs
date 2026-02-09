@@ -1,10 +1,12 @@
 module StrictnessTooling
   ( isWhnfInt
+  , mkThunk
   , tests
   ) where
 
 import Control.Exception (SomeException, try)
 import Data.Maybe (isNothing)
+import GHC.Exts (lazy)
 import NoThunks.Class (ThunkInfo, noThunks)
 import Test.QuickCheck (Property)
 import Test.Tasty (TestTree, testGroup)
@@ -28,9 +30,20 @@ tests =
           pure (not ok)
     , testProperty "forced Int is WHNF" $
         prop_forced_int_whnf
+    , testProperty "mkThunk creates a thunk" $
+        prop_mkThunk_lazy
     ]
 
 prop_forced_int_whnf :: Int -> Property
 prop_forced_int_whnf n = ioProperty $ do
   let x = n
   x `seq` isWhnfInt x
+
+prop_mkThunk_lazy :: Int -> Property
+prop_mkThunk_lazy n = ioProperty $ do
+  ok <- isWhnfInt (mkThunk n)
+  pure (not ok)
+
+{-# NOINLINE mkThunk #-}
+mkThunk :: Int -> Int
+mkThunk ~x = lazy x

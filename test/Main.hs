@@ -44,8 +44,6 @@ import Prelude hiding (filter, lookup, map, null)
 newtype K = K Word64
   deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
 
-data Box = Box Int
-
 instance Arbitrary K where
   arbitrary = K . getLarge <$> arbitrary
   shrink (K w) = K <$> shrink w
@@ -1232,22 +1230,14 @@ strictnessTests =
 
 prop_strict_insert_whnf :: K -> Property
 prop_strict_insert_whnf k = ioProperty $ do
-  let !v1 = Box (error "strict insert should not force inner fields")
-      !v2 = Box (error "strict insert should not force inner fields")
-      m0 = Strict.singleton (toWord64 k) v1
-      m1 = Strict.insert (toWord64 k) v2 m0
   result <-
     try
       ( evaluate
-          ( Strict.foldlWithKey'
-              (\acc _ v -> case v of Box _ -> acc)
-              ()
-              m1
-          )
+          (Strict.insert (toWord64 k) (error "strict insert should force") Strict.empty)
       )
   pure $ case result of
-    Left (_ :: SomeException) -> property False
-    Right _ -> property True
+    Left (_ :: SomeException) -> property True
+    Right _ -> property False
 
 instanceTests :: TestTree
 instanceTests =

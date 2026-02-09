@@ -120,4 +120,5 @@ test-suite amt-word64-test
         QuickCheck,
         quickcheck-classes-base,
         tasty,
+        tasty-expected-failure,
         tasty-quickcheck

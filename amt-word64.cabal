@@ -97,6 +97,7 @@ test-suite amt-word64-test
     other-modules:
         Instances
         MapProperties
+        MapStrictness
         StrictnessTooling
         Word64SetTests
 

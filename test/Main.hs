@@ -2,6 +2,7 @@ module Main (main) where
 
 import Instances qualified
 import MapProperties qualified
+import MapStrictness qualified
 import StrictnessTooling qualified
 import Test.Tasty (defaultMain, localOption, testGroup)
 import Test.Tasty.QuickCheck (QuickCheckMaxSize (QuickCheckMaxSize))
@@ -17,6 +18,7 @@ main =
           [ localOption (QuickCheckMaxSize 500) MapProperties.word64MapTests
           , Instances.instanceTests
           ]
+      , MapStrictness.tests
       , StrictnessTooling.tests
       , testGroup
           "Set"

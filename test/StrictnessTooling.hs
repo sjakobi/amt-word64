@@ -21,6 +21,7 @@ isWhnfInt x = do
   pure $ case result of
     Left _ -> False
     Right info -> isNothing info
+{-# NOINLINE isWhnfInt #-}
 
 tests :: TestTree
 tests =
@@ -33,10 +34,8 @@ tests =
     , testProperty "forced Int is WHNF" $
         ioProperty $
           isWhnfInt (42 :: Int)
-    , testProperty "mkThunk is lazy" $
-        ioProperty $ do
-          ok <- isWhnfInt (mkThunk (error "mkThunk: lazy"))
-          pure (not ok)
+    , testProperty "mkThunk creates a thunk" $
+        prop_mkThunk_lazy
     , expectFail $
         testProperty "Strict.insert forces WHNF values" $
           prop_strict_insert_whnf_values
@@ -55,6 +54,15 @@ prop_strict_insert_whnf_values entries k v = ioProperty $ do
       oks <- traverse (isWhnfInt . snd) (Strict.toList m1)
       pure (and oks)
 
+prop_mkThunk_lazy :: Int -> Property
+prop_mkThunk_lazy n = ioProperty $ do
+  ok <- isWhnfInt (mkThunk (n))
+  pure (not ok)
+
 {-# NOINLINE mkThunk #-}
 mkThunk :: Int -> Int
 mkThunk ~x = lazy x
+
+{-# NOINLINE plus1 #-}
+plus1 :: Int -> Int
+plus1 x = x + 1

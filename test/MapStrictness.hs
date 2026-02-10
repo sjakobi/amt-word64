@@ -22,6 +22,12 @@ tests =
         prop_strict_adjust_whnf
     , testProperty "Strict.insert forces WHNF values" $
         prop_strict_insert_whnf_values
+    , testProperty "Strict.union preserves WHNF values" $
+        prop_strict_union_whnf
+    , testProperty "Strict.intersection preserves WHNF values" $
+        prop_strict_intersection_whnf
+    , testProperty "Strict.difference preserves WHNF values" $
+        prop_strict_difference_whnf
     ]
 
 prop_strict_insert_whnf_values :: [(Word64, Int)] -> Word64 -> Int -> Property
@@ -29,22 +35,14 @@ prop_strict_insert_whnf_values entries k v = ioProperty $ do
   let m0 = Strict.fromList entries
   m0 `deepseq` pure ()
   let vThunk = mkThunk $ v + 1
-  preOk <- isWhnfInt vThunk
-  if preOk
-    then error "Expected a thunk for Strict.insert input, but got WHNF"
-    else do
-      let m1 = Strict.insert k vThunk m0
-      allWhnfMap m1
+  let m1 = Strict.insert k vThunk m0
+  allWhnfMap m1
 
 prop_strict_singleton_whnf :: Word64 -> Int -> Property
 prop_strict_singleton_whnf k v = ioProperty $ do
   let vThunk = mkThunk v
-  preOk <- isWhnfInt vThunk
-  if preOk
-    then error "Expected a thunk for Strict.singleton input, but got WHNF"
-    else do
-      let m = Strict.singleton k vThunk
-      allWhnfMap m
+  let m = Strict.singleton k vThunk
+  allWhnfMap m
 
 prop_strict_fromList_whnf :: [(Word64, Int)] -> Property
 prop_strict_fromList_whnf entries = ioProperty $ do
@@ -54,12 +52,8 @@ prop_strict_fromList_whnf entries = ioProperty $ do
       let m = Strict.fromList entriesThunk
       m `seq` allWhnfMap m
     (_, v0) : _ -> do
-      preOk <- isWhnfInt v0
-      if preOk
-        then error "Expected a thunk for Strict.fromList input, but got WHNF"
-        else do
-          let m = Strict.fromList entriesThunk
-          allWhnfMap m
+      let m = Strict.fromList entriesThunk
+      allWhnfMap m
 
 prop_strict_adjust_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_adjust_whnf entries k v = ioProperty $ do
@@ -68,12 +62,65 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
   let m0 = Strict.fromList ((k, v) : entriesWhnf)
   m0 `deepseq` pure ()
   let vThunk = mkThunk v
-  preOk <- isWhnfInt vThunk
-  if preOk
-    then error "Expected a thunk for Strict.adjust result, but got WHNF"
-    else do
-      let m1 = Strict.adjust (\_ -> vThunk) k m0
-      allWhnfMap m1
+  let m1 = Strict.adjust (\_ -> vThunk) k m0
+  allWhnfMap m1
+
+prop_strict_union_whnf :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_strict_union_whnf entries1 entries2 = ioProperty $ do
+  let entries1Thunk = fmap (\(k, v) -> (k, mkThunk v)) entries1
+  let entries2Thunk = fmap (\(k, v) -> (k, mkThunk v)) entries2
+  case entries1Thunk ++ entries2Thunk of
+    [] -> do
+      let m = Strict.union (Strict.fromList entries1Thunk) (Strict.fromList entries2Thunk)
+      allWhnfMap m
+    (_, v0) : _ -> do
+      let m1 = Strict.fromList entries1Thunk
+      let m2 = Strict.fromList entries2Thunk
+      m1 `deepseq` m2 `deepseq` pure ()
+      let m = Strict.union m1 m2
+      allWhnfMap m
+
+prop_strict_intersection_whnf ::
+  [(Word64, Int)] ->
+  [(Word64, Int)] ->
+  Word64 ->
+  Int ->
+  Int ->
+  Property
+prop_strict_intersection_whnf entries1 entries2 k v1 v2 = ioProperty $ do
+  let entries1Thunk = fmap (\(k', v') -> (k', mkThunk v')) entries1
+  let entries2Thunk = fmap (\(k', v') -> (k', mkThunk v')) entries2
+  let v1Thunk = mkThunk v1
+  let v2Thunk = mkThunk v2
+  let leftEntries = entries1Thunk ++ [(k, v1Thunk)]
+  let rightEntries = entries2Thunk ++ [(k, v2Thunk)]
+  let m1 = Strict.fromList leftEntries
+  let m2 = Strict.fromList rightEntries
+  m1 `deepseq` m2 `deepseq` pure ()
+  let m = Strict.intersection m1 m2
+  allWhnfMap m
+
+prop_strict_difference_whnf ::
+  [(Word64, Int)] ->
+  [(Word64, Int)] ->
+  Word64 ->
+  Int ->
+  Int ->
+  Property
+prop_strict_difference_whnf entries1 entries2 k v1 v2 = ioProperty $ do
+  let entries1Thunk = fmap (\(k', v') -> (k', mkThunk v')) entries1
+  let entries2Thunk = fmap (\(k', v') -> (k', mkThunk v')) entries2
+  let v1ThunkLeft = mkThunk v1
+  let v1ThunkRight = mkThunk v1
+  let v2ThunkLeft = mkThunk v2
+  let k2 = k + 1
+  let leftEntries = entries1Thunk ++ [(k, v1ThunkLeft), (k2, v2ThunkLeft)]
+  let rightEntries = (k, v1ThunkRight) : filter (\(k', _) -> k' /= k2) entries2Thunk
+  let m1 = Strict.fromList leftEntries
+  let m2 = Strict.fromList rightEntries
+  m1 `deepseq` m2 `deepseq` pure ()
+  let m = Strict.difference m1 m2
+  allWhnfMap m
 
 -- TODO: This forces the spine of the map.
 -- It would be interesting to have a way to check the values without

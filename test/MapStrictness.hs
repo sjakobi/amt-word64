@@ -68,6 +68,8 @@ tests =
         prop_strict_partition_whnf
     , testProperty "Strict.partitionWithKey preserves WHNF values" $
         prop_strict_partition_with_key_whnf
+    , testProperty "Strict.mapMaybe forces WHNF values" $
+        prop_strict_map_maybe_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -295,6 +297,12 @@ prop_strict_partition_with_key_whnf :: [(Word64, Int)] -> Property
 prop_strict_partition_with_key_whnf entries = ioProperty $ do
   let ms = Strict.partitionWithKey (\k _ -> odd k) (Strict.fromList entries)
   allWhnfMapPair ms
+
+prop_strict_map_maybe_whnf :: [(Word64, Int)] -> Property
+prop_strict_map_maybe_whnf entries = ioProperty $ do
+  let m0 = Strict.fromList entries
+  let m = Strict.mapMaybe (\x -> Just (mkThunk (x + 1))) m0
+  allWhnfMap m
 
 -- TODO: This forces the spine of the map.
 -- It would be interesting to have a way to check the values without

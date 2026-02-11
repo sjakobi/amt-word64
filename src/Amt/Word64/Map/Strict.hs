@@ -265,7 +265,12 @@ intersectionWithKey f =
     (const empty)
 
 mapMaybe :: (a -> Maybe b) -> Word64Map a -> Word64Map b
-mapMaybe = I.mapMaybe
+mapMaybe f =
+  I.mapMaybeWithKey
+    ( \_ x -> case f x of
+        Nothing -> Nothing
+        Just y -> y `seq` Just y
+    )
 
 mapMaybeWithKey ::
   (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b

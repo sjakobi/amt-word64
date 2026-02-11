@@ -22,6 +22,8 @@ tests =
         prop_strict_fromList_whnf
     , testProperty "Strict.adjust forces WHNF values" $
         prop_strict_adjust_whnf
+    , testProperty "Strict.delete preserves WHNF values" $
+        prop_strict_delete_whnf
     , testProperty "Strict.insert forces WHNF values" $
         prop_strict_insert_whnf_values
     , testProperty "Strict.union preserves WHNF values" $
@@ -56,6 +58,11 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
   let vThunk = mkThunk v
   let m1 = Strict.adjust (\_ -> vThunk) k m0
   allWhnfMap m1
+
+prop_strict_delete_whnf :: [(Word64, Int)] -> Word64 -> Property
+prop_strict_delete_whnf entries k = ioProperty $ do
+  let m = Strict.delete k (Strict.fromList entries)
+  allWhnfMap m
 
 prop_strict_union_whnf :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_strict_union_whnf entries1 entries2 = ioProperty $ do

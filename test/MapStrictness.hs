@@ -49,9 +49,7 @@ prop_strict_fromList_whnf entries = ioProperty $ do
 
 prop_strict_adjust_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_adjust_whnf entries k v = ioProperty $ do
-  let forceValue (k', v') = v' `seq` (k', v')
-  let entriesWhnf = fmap forceValue entries
-  let m0 = Strict.fromList ((k, v) : entriesWhnf)
+  let m0 = Strict.fromList ((k, v) : entries)
   m0 `deepseq` pure ()
   let vThunk = mkThunk v
   let m1 = Strict.adjust (\_ -> vThunk) k m0
@@ -59,10 +57,8 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
 
 prop_strict_union_whnf :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_strict_union_whnf entries1 entries2 = ioProperty $ do
-  let entries1Thunk = fmap (second mkThunk) entries1
-  let entries2Thunk = fmap (second mkThunk) entries2
-  let m1 = Strict.fromList entries1Thunk
-  let m2 = Strict.fromList entries2Thunk
+  let m1 = Strict.fromList entries1
+  let m2 = Strict.fromList entries2
   m1 `deepseq` m2 `deepseq` pure ()
   let m = Strict.union m1 m2
   allWhnfMap m

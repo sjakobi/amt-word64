@@ -12,6 +12,24 @@ import System.Random.SplitMix (mkSMGen, nextWord64)
 sizes :: [Int]
 sizes = [0, 1, 5, 10, 100, 1000, 10000, 100000]
 
+queryCount :: Int
+queryCount = 10
+
+presentSeedBase :: Word64
+presentSeedBase = 0x243f6a8885a308d3
+
+absentSeedBase :: Word64
+absentSeedBase = 0x13198a2e03707344
+
+seedMixConst :: Word64
+seedMixConst = 0x9e3779b97f4a7c15
+
+tagContiguous :: Word64
+tagContiguous = 0xbf58476d1ce4e5b9
+
+tagRandom :: Word64
+tagRandom = 0x94d049bb133111eb
+
 insertAllAmt :: [Word64] -> AmtSet.Word64Set
 insertAllAmt = foldl' (flip AmtSet.insert) AmtSet.empty
 
@@ -20,6 +38,15 @@ insertAllGhc = foldl' (flip GHCSet.insert) GHCSet.empty
 
 insertAllHash :: [Word64] -> HashSet.HashSet Word64
 insertAllHash = foldl' (flip HashSet.insert) HashSet.empty
+
+insertManyAmt :: AmtSet.Word64Set -> [Word64] -> AmtSet.Word64Set
+insertManyAmt = foldl' (flip AmtSet.insert)
+
+insertManyGhc :: GHCSet.Word64Set -> [Word64] -> GHCSet.Word64Set
+insertManyGhc = foldl' (flip GHCSet.insert)
+
+insertManyHash :: HashSet.HashSet Word64 -> [Word64] -> HashSet.HashSet Word64
+insertManyHash = foldl' (flip HashSet.insert)
 
 memberCountAmt :: AmtSet.Word64Set -> [Word64] -> Int
 memberCountAmt set =
@@ -47,6 +74,24 @@ randomKeys n = go n (mkSMGen seed)
     let (!w, !s') = nextWord64 s
      in w : go (k - 1) s'
 
+randomWords :: Word64 -> [Word64]
+randomWords seed = go (mkSMGen seed)
+ where
+  go s =
+    let (!w, !s') = nextWord64 s
+     in w : go s'
+
+seedFor :: Word64 -> Word64 -> Int -> Word64
+seedFor base tag n =
+  base + tag + seedMixConst * fromIntegral n
+
+presentQueries :: Word64 -> [Word64]
+presentQueries seed = take queryCount (randomWords seed)
+
+absentQueries :: (Word64 -> Bool) -> Word64 -> [Word64]
+absentQueries isMember seed =
+  take queryCount $ filter (not . isMember) (randomWords seed)
+
 benchInsertKind :: String -> (Int -> [Word64]) -> Benchmark
 benchInsertKind label mkKeys =
   bgroup
@@ -61,21 +106,41 @@ benchInsertKind label mkKeys =
     , let keys = mkKeys n
     ]
 
-benchMemberKind :: String -> (Int -> [Word64]) -> Benchmark
-benchMemberKind label mkKeys =
+benchMemberPresentKind :: String -> Word64 -> (Int -> [Word64]) -> Benchmark
+benchMemberPresentKind label tag mkKeys =
   bgroup
     label
-    [ bgroup
-        (show n)
-        [ let !set = insertAllAmt keys
-           in bench "amt-word64" $ nf (memberCountAmt set) keys
-        , let !set = insertAllGhc keys
-           in bench "ghc-word64set" $ nf (memberCountGhc set) keys
-        , let !set = insertAllHash keys
-           in bench "hashset" $ nf (memberCountHash set) keys
-        ]
+    [ let keys = mkKeys n
+          queries = presentQueries (seedFor presentSeedBase tag n)
+       in bgroup
+            (show n)
+            [ let !set = insertManyAmt (insertAllAmt keys) queries
+               in bench "amt-word64" $ nf (memberCountAmt set) queries
+            , let !set = insertManyGhc (insertAllGhc keys) queries
+               in bench "ghc-word64set" $ nf (memberCountGhc set) queries
+            , let !set = insertManyHash (insertAllHash keys) queries
+               in bench "hashset" $ nf (memberCountHash set) queries
+            ]
     | n <- sizes
-    , let keys = mkKeys n
+    ]
+
+benchMemberAbsentKind :: String -> Word64 -> (Int -> [Word64]) -> Benchmark
+benchMemberAbsentKind label tag mkKeys =
+  bgroup
+    label
+    [ let keys = mkKeys n
+          baseAmt = insertAllAmt keys
+          queries = absentQueries (`AmtSet.member` baseAmt) (seedFor absentSeedBase tag n)
+       in bgroup
+            (show n)
+            [ let !set = baseAmt
+               in bench "amt-word64" $ nf (memberCountAmt set) queries
+            , let !set = insertAllGhc keys
+               in bench "ghc-word64set" $ nf (memberCountGhc set) queries
+            , let !set = insertAllHash keys
+               in bench "hashset" $ nf (memberCountHash set) queries
+            ]
+    | n <- sizes
     ]
 
 main :: IO ()
@@ -88,7 +153,15 @@ main =
         ]
     , bgroup
         "member"
-        [ benchMemberKind "contiguous" contiguousKeys
-        , benchMemberKind "random" randomKeys
+        [ bgroup
+            "present"
+            [ benchMemberPresentKind "contiguous" tagContiguous contiguousKeys
+            , benchMemberPresentKind "random" tagRandom randomKeys
+            ]
+        , bgroup
+            "absent"
+            [ benchMemberAbsentKind "contiguous" tagContiguous contiguousKeys
+            , benchMemberAbsentKind "random" tagRandom randomKeys
+            ]
         ]
     ]

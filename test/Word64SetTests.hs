@@ -53,14 +53,8 @@ import Test.QuickCheck.Classes.Base
   )
 import Test.Tasty
 import Test.Tasty.QuickCheck
+import TestUtils (K, fromWord64, toWord64)
 import Prelude hiding (filter, foldl', foldr, map, null)
-
-newtype K = K Word64
-  deriving (Eq, Ord, Show, Num, Integral, Real, Enum)
-
-instance Arbitrary K where
-  arbitrary = K . getLarge <$> arbitrary
-  shrink (K w) = K <$> shrink w
 
 newtype ShortList a = ShortList [a]
   deriving (Show)
@@ -72,12 +66,6 @@ instance Arbitrary a => Arbitrary (ShortList a) where
 instance Arbitrary Word64Set where
   arbitrary = fromKList <$> arbitrary
   shrink s = fromKList <$> shrink (toSortedKList s)
-
-toWord64 :: K -> Word64
-toWord64 (K w) = w
-
-fromWord64 :: Word64 -> K
-fromWord64 = K
 
 fromKList :: [K] -> Word64Set
 fromKList = fromList . L.map toWord64

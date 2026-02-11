@@ -197,7 +197,14 @@ unionWith f =
 
 unionWithKey ::
   (Word64 -> a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
-unionWithKey = I.unionWithKey
+unionWithKey f =
+  I.mergeWithKey
+    ( \k x y ->
+        let z = f k x y
+         in z `seq` Just z
+    )
+    id
+    id
 
 mergeWithKey ::
   (Word64 -> a -> b -> Maybe c) ->

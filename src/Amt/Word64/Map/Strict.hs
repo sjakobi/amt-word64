@@ -285,7 +285,12 @@ mapEither ::
   (a -> Either b c) ->
   Word64Map a ->
   (Word64Map b, Word64Map c)
-mapEither = I.mapEither
+mapEither f =
+  I.mapEitherWithKey
+    ( \_ x -> case f x of
+        Left y -> y `seq` Left y
+        Right z -> z `seq` Right z
+    )
 
 mapEitherWithKey ::
   (Word64 -> a -> Either b c) ->

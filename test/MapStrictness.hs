@@ -72,6 +72,8 @@ tests =
         prop_strict_map_maybe_whnf
     , testProperty "Strict.mapMaybeWithKey forces WHNF values" $
         prop_strict_map_maybe_with_key_whnf
+    , testProperty "Strict.mapEither forces WHNF values" $
+        prop_strict_map_either_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -311,6 +313,19 @@ prop_strict_map_maybe_with_key_whnf entries = ioProperty $ do
   let m0 = Strict.fromList entries
   let m = Strict.mapMaybeWithKey (\_ x -> Just (mkThunk (x + 1))) m0
   allWhnfMap m
+
+prop_strict_map_either_whnf :: [(Word64, Int)] -> Property
+prop_strict_map_either_whnf entries = ioProperty $ do
+  let m0 = Strict.fromList entries
+  let ms =
+        Strict.mapEither
+          ( \x ->
+              if odd x
+                then Left (mkThunk (x + 1))
+                else Right (mkThunk (x + 2))
+          )
+          m0
+  allWhnfMapPair ms
 
 -- TODO: This forces the spine of the map.
 -- It would be interesting to have a way to check the values without

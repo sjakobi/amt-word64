@@ -146,7 +146,7 @@ prop_strict_fromList_whnf entries = ioProperty $ do
 
 prop_strict_adjust_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_adjust_whnf entries k v = ioProperty $ do
-  let m0 = Strict.fromList ((k, v) : entries)
+  let m0 = Strict.fromList entries
   let vThunk = mkThunk v
   let m1 = Strict.adjust (\_ -> vThunk) k m0
   allWhnfMap m1
@@ -154,7 +154,7 @@ prop_strict_adjust_whnf entries k v = ioProperty $ do
 prop_strict_adjust_with_key_whnf ::
   [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_adjust_with_key_whnf entries k v = ioProperty $ do
-  let m0 = Strict.fromList ((k, v) : entries)
+  let m0 = Strict.fromList entries
   let vThunk = mkThunk v
   let m1 = Strict.adjustWithKey (\_ _ -> vThunk) k m0
   allWhnfMap m1

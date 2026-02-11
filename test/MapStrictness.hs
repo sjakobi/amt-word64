@@ -90,7 +90,7 @@ prop_strict_insert_whnf_values entries k v = ioProperty $ do
 
 prop_strict_insert_with_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_insert_with_whnf entries k v = ioProperty $ do
-  let m0 = Strict.insert k v (Strict.fromList entries)
+  let m0 = Strict.fromList entries
   let vThunk = mkThunk $ v + 1
   let m1 = Strict.insertWith (\_ _ -> vThunk) k v m0
   allWhnfMap m1
@@ -98,7 +98,7 @@ prop_strict_insert_with_whnf entries k v = ioProperty $ do
 prop_strict_insert_with_key_whnf ::
   [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_insert_with_key_whnf entries k v = ioProperty $ do
-  let m0 = Strict.insert k v (Strict.fromList entries)
+  let m0 = Strict.fromList entries
   let vThunk = mkThunk $ v + 1
   let m1 = Strict.insertWithKey (\_ _ _ -> vThunk) k v m0
   allWhnfMap m1

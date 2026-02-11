@@ -178,7 +178,12 @@ map f =
     )
 
 mapWithKey :: (Word64 -> a -> b) -> Word64Map a -> Word64Map b
-mapWithKey = I.mapWithKey
+mapWithKey f =
+  I.mapMaybeWithKey
+    ( \k v ->
+        let y = f k v
+         in y `seq` Just y
+    )
 
 unionWith :: (a -> a -> a) -> Word64Map a -> Word64Map a -> Word64Map a
 unionWith = I.unionWith

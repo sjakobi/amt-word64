@@ -40,6 +40,8 @@ tests =
         prop_strict_alter_whnf
     , testProperty "Strict.map forces WHNF values" $
         prop_strict_map_whnf
+    , testProperty "Strict.mapWithKey forces WHNF values" $
+        prop_strict_map_with_key_whnf
     , testProperty "Strict.union preserves WHNF values" $
         prop_strict_union_whnf
     ]
@@ -95,6 +97,12 @@ prop_strict_map_whnf :: [(Word64, Int)] -> Property
 prop_strict_map_whnf entries = ioProperty $ do
   let m0 = Strict.fromList entries
   let m = Strict.map (\x -> mkThunk (x + 1)) m0
+  allWhnfMap m
+
+prop_strict_map_with_key_whnf :: [(Word64, Int)] -> Property
+prop_strict_map_with_key_whnf entries = ioProperty $ do
+  let m0 = Strict.fromList entries
+  let m = Strict.mapWithKey (\_ x -> mkThunk (x + 1)) m0
   allWhnfMap m
 
 prop_strict_singleton_whnf :: Word64 -> Int -> Property

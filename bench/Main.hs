@@ -5,10 +5,10 @@ module Main (main) where
 
 import Amt.Word64.Set qualified as AmtSet
 import Criterion.Main
-import Data.Bits (shiftR, xor)
 import Data.HashSet qualified as HashSet
 import Data.Word (Word64)
 import GHC.Data.Word64Set qualified as GHCSet
+import System.Random.SplitMix (nextWord64, seedSMGen)
 
 data Impl s = Impl
   { implName :: String
@@ -60,21 +60,13 @@ contiguousKeys n
   | otherwise = [0 .. fromIntegral (n - 1)]
 
 randomKeys :: Int -> [Word64]
-randomKeys n = go n seed
+randomKeys n = go n (seedSMGen seed)
  where
   seed = 0x243f6a8885a308d3
   go 0 _ = []
   go k s =
-    let (!w, !s') = splitmix64 s
+    let (!w, !s') = nextWord64 s
      in w : go (k - 1) s'
-
-splitmix64 :: Word64 -> (Word64, Word64)
-splitmix64 s =
-  let s' = s + 0x9e3779b97f4a7c15
-      z1 = (s' `xor` (s' `shiftR` 30)) * 0xbf58476d1ce4e5b9
-      z2 = (z1 `xor` (z1 `shiftR` 27)) * 0x94d049bb133111eb
-      z3 = z2 `xor` (z2 `shiftR` 31)
-   in (z3, s')
 
 benchInsert :: [Word64] -> SomeImpl -> Benchmark
 benchInsert keys (SomeImpl impl) =

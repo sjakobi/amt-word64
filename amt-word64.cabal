@@ -142,4 +142,5 @@ benchmark amt-word64-bench
         amt-word64,
         criterion,
         ghc,
+        splitmix,
         unordered-containers

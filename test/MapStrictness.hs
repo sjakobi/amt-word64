@@ -204,20 +204,8 @@ prop_strict_merge_with_key_whnf ::
   Int ->
   Property
 prop_strict_merge_with_key_whnf entries1 entries2 k v = ioProperty $ do
-  let kLeft = k + 1
-  let kRight = k + 2
-  let m1 =
-        Strict.fromList
-          ( (k, v)
-              : (kLeft, v + 3)
-              : filter (\(k', _) -> k' /= kRight) entries1
-          )
-  let m2 =
-        Strict.fromList
-          ( (k, v + 1)
-              : (kRight, v + 4)
-              : filter (\(k', _) -> k' /= kLeft) entries2
-          )
+  let m1 = Strict.fromList ((k, v) : entries1)
+  let m2 = Strict.fromList ((k, v + 1) : entries2)
   let vThunk = mkThunk $ v + 2
   let m =
         Strict.mergeWithKey

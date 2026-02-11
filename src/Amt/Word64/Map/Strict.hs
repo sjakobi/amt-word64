@@ -170,7 +170,12 @@ alter f k m =
     m
 
 map :: (a -> b) -> Word64Map a -> Word64Map b
-map = I.map
+map f =
+  I.mapMaybeWithKey
+    ( \_ v ->
+        let y = f v
+         in y `seq` Just y
+    )
 
 mapWithKey :: (Word64 -> a -> b) -> Word64Map a -> Word64Map b
 mapWithKey = I.mapWithKey

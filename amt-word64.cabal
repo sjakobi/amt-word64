@@ -62,6 +62,7 @@ library
     exposed-modules:
         Amt.Word64.Map,
         Amt.Word64.Map.Lazy,
+        Amt.Word64.Map.Strict,
         Amt.Word64.Map.Internal,
         Amt.Word64.Set,
         Amt.Word64.Set.Internal,
@@ -94,6 +95,11 @@ test-suite amt-word64-test
 
     -- Modules included in this executable, other than Main.
     other-modules:
+        MapInstances
+        MapProperties
+        MapStrictness
+        StrictnessTooling
+        TestUtils
         Word64SetTests
 
     -- LANGUAGE extensions used by modules in this package.
@@ -113,7 +119,10 @@ test-suite amt-word64-test
         base >=4.20 && <4.23,
         amt-word64,
         containers,
+        deepseq,
+        nothunks,
         QuickCheck,
         quickcheck-classes-base,
         tasty,
+        tasty-expected-failure,
         tasty-quickcheck

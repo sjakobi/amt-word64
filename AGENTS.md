@@ -214,3 +214,15 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - Before building a new PR on top of `master`, check what was just merged (e.g., `git log origin/master..branch`) to avoid cherry-picking already-merged commits and unnecessary conflicts.
 - To find line-level review comments quickly, use `gh api repos/<owner>/<repo>/pulls/<pr>/comments`; review bodies can be empty, so rely on the comments API for actionable items.
 - For PR replies, prefer `--body-file` (or a quoted heredoc piped to `--body-file -`) so newlines render correctly. Line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.
+
+## Project-Specific Notes That Improve Efficiency
+
+- Test code is now split into modules.
+- `test/MapProperties.hs` holds map operation properties and exports `word64MapTests` plus `K`/`fromKListInternal`.
+- `test/MapInstances.hs` holds instance law tests and exports `instanceTests`.
+- `test/MapStrictness.hs` holds strictness properties for `Map.Strict` and imports tooling from `StrictnessTooling`.
+- `test/StrictnessTooling.hs` is only for tooling utilities (`isWhnfInt`, `mkThunk`, and their property tests).
+- `localOption` comes from `Test.Tasty`, not `Test.Tasty.QuickCheck`. Keep imports accordingly in test runners.
+- `isWhnfInt` uses `noThunks` and returns `False` on exceptions; `mkThunk` is exported from `StrictnessTooling` and uses `GHC.Exts.lazy`.
+- When enabling Core dumps for a specific test module, `cabal build` may not emit `.dump-simpl` for test-only modules; using `cabal exec -- ghc -ddump-simpl -ddump-to-file -package amt-word64 test/Module.hs` generates dumps reliably.
+- Shared test utilities live in `test/TestUtils.hs`. Use `kListToLazyMap` and `toSortedKList` for K-list conversions instead of duplicating helpers.

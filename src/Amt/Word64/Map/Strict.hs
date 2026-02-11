@@ -241,7 +241,14 @@ intersection =
     (const empty)
 
 intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
-intersectionWith = I.intersectionWith
+intersectionWith f =
+  I.mergeWithKey
+    ( \_ x y ->
+        let z = f x y
+         in z `seq` Just z
+    )
+    (const empty)
+    (const empty)
 
 intersectionWithKey ::
   (Word64 -> a -> b -> c) ->

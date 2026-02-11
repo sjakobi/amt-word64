@@ -227,7 +227,12 @@ differenceWith ::
   Word64Map a ->
   Word64Map b ->
   Word64Map a
-differenceWith = I.differenceWith
+differenceWith f =
+  I.differenceWith
+    ( \x y -> case f x y of
+        Nothing -> Nothing
+        Just z -> z `seq` Just z
+    )
 
 intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
 intersectionWith = I.intersectionWith

@@ -48,6 +48,8 @@ tests =
         prop_strict_union_with_whnf
     , testProperty "Strict.unionWithKey forces WHNF values" $
         prop_strict_union_with_key_whnf
+    , testProperty "Strict.mergeWithKey forces WHNF values" $
+        prop_strict_merge_with_key_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -172,6 +174,25 @@ prop_strict_union_with_key_whnf entries1 entries2 k v = ioProperty $ do
   let m2 = Strict.fromList ((k, v + 1) : entries2)
   let vThunk = mkThunk $ v + 2
   let m = Strict.unionWithKey (\_ _ _ -> vThunk) m1 m2
+  allWhnfMap m
+
+prop_strict_merge_with_key_whnf ::
+  [(Word64, Int)] ->
+  [(Word64, Int)] ->
+  Word64 ->
+  Int ->
+  Property
+prop_strict_merge_with_key_whnf entries1 entries2 k v = ioProperty $ do
+  let m1 = Strict.fromList ((k, v) : entries1)
+  let m2 = Strict.fromList ((k, v + 1) : entries2)
+  let vThunk = mkThunk $ v + 2
+  let m =
+        Strict.mergeWithKey
+          (\_ _ _ -> Just vThunk)
+          id
+          id
+          m1
+          m2
   allWhnfMap m
 
 -- TODO: This forces the spine of the map.

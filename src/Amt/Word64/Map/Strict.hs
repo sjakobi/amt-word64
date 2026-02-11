@@ -213,7 +213,14 @@ mergeWithKey ::
   Word64Map a ->
   Word64Map b ->
   Word64Map c
-mergeWithKey = I.mergeWithKey
+mergeWithKey f g h =
+  I.mergeWithKey
+    ( \k x y -> case f k x y of
+        Nothing -> Nothing
+        Just z -> z `seq` Just z
+    )
+    g
+    h
 
 differenceWith ::
   (a -> b -> Maybe a) ->

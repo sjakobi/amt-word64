@@ -32,6 +32,8 @@ tests =
         prop_strict_insert_with_whnf
     , testProperty "Strict.insertWithKey forces WHNF values" $
         prop_strict_insert_with_key_whnf
+    , testProperty "Strict.update forces WHNF values" $
+        prop_strict_update_whnf
     , testProperty "Strict.union preserves WHNF values" $
         prop_strict_union_whnf
     ]
@@ -59,6 +61,13 @@ prop_strict_insert_with_key_whnf entries k v = ioProperty $ do
   let m0 = Strict.insert k v (Strict.fromList entries)
   let vThunk = mkThunk $ v + 1
   let m1 = Strict.insertWithKey (\_ _ _ -> vThunk) k v m0
+  allWhnfMap m1
+
+prop_strict_update_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_strict_update_whnf entries k v = ioProperty $ do
+  let m0 = Strict.fromList ((k, v) : entries)
+  let vThunk = mkThunk $ v + 1
+  let m1 = Strict.update (\_ -> Just vThunk) k m0
   allWhnfMap m1
 
 prop_strict_singleton_whnf :: Word64 -> Int -> Property

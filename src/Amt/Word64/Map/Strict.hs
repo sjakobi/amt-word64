@@ -139,7 +139,14 @@ adjustWithKey f k m =
     m
 
 update :: (a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
-update f k m = I.update f k m
+update f k m =
+  I.update
+    ( \x -> case f x of
+        Nothing -> Nothing
+        Just y -> y `seq` Just y
+    )
+    k
+    m
 
 updateWithKey ::
   (Word64 -> a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a

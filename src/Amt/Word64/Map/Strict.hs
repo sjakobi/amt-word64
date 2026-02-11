@@ -90,7 +90,16 @@ insert :: Word64 -> a -> Word64Map a -> Word64Map a
 insert !k !v m = I.insert k v m
 
 insertWith :: (a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a
-insertWith f k v m = I.insertWith f k v m
+insertWith f k v m =
+  I.alter
+    ( \mv -> case mv of
+        Nothing -> v `seq` Just v
+        Just old ->
+          let y = f v old
+           in y `seq` Just y
+    )
+    k
+    m
 
 insertWithKey ::
   (Word64 -> a -> a -> a) -> Word64 -> a -> Word64Map a -> Word64Map a

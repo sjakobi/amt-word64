@@ -19,8 +19,12 @@ tests =
         prop_strict_singleton_whnf
     , testProperty "Strict.fromList forces WHNF values" $
         prop_strict_fromList_whnf
+    , testProperty "Strict.adjust forces WHNF values" $
+        prop_strict_adjust_whnf
     , testProperty "Strict.insert forces WHNF values" $
         prop_strict_insert_whnf_values
+    , testProperty "Strict.union preserves WHNF values" $
+        prop_strict_union_whnf
     ]
 
 prop_strict_insert_whnf_values :: [(Word64, Int)] -> Word64 -> Int -> Property
@@ -41,6 +45,26 @@ prop_strict_fromList_whnf :: [(Word64, Int)] -> Property
 prop_strict_fromList_whnf entries = ioProperty $ do
   let entriesThunk = fmap (second mkThunk) entries
   let m = Strict.fromList entriesThunk
+  allWhnfMap m
+
+prop_strict_adjust_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
+prop_strict_adjust_whnf entries k v = ioProperty $ do
+  let forceValue (k', v') = v' `seq` (k', v')
+  let entriesWhnf = fmap forceValue entries
+  let m0 = Strict.fromList ((k, v) : entriesWhnf)
+  m0 `deepseq` pure ()
+  let vThunk = mkThunk v
+  let m1 = Strict.adjust (\_ -> vThunk) k m0
+  allWhnfMap m1
+
+prop_strict_union_whnf :: [(Word64, Int)] -> [(Word64, Int)] -> Property
+prop_strict_union_whnf entries1 entries2 = ioProperty $ do
+  let entries1Thunk = fmap (second mkThunk) entries1
+  let entries2Thunk = fmap (second mkThunk) entries2
+  let m1 = Strict.fromList entries1Thunk
+  let m2 = Strict.fromList entries2Thunk
+  m1 `deepseq` m2 `deepseq` pure ()
+  let m = Strict.union m1 m2
   allWhnfMap m
 
 -- TODO: This forces the spine of the map.

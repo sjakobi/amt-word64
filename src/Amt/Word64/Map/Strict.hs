@@ -296,7 +296,12 @@ mapEitherWithKey ::
   (Word64 -> a -> Either b c) ->
   Word64Map a ->
   (Word64Map b, Word64Map c)
-mapEitherWithKey = I.mapEitherWithKey
+mapEitherWithKey f =
+  I.mapEitherWithKey
+    ( \k x -> case f k x of
+        Left y -> y `seq` Left y
+        Right z -> z `seq` Right z
+    )
 
 fromList :: [(Word64, a)] -> Word64Map a
 fromList xs =

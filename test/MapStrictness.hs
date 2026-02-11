@@ -74,6 +74,8 @@ tests =
         prop_strict_map_maybe_with_key_whnf
     , testProperty "Strict.mapEither forces WHNF values" $
         prop_strict_map_either_whnf
+    , testProperty "Strict.mapEitherWithKey forces WHNF values" $
+        prop_strict_map_either_with_key_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -321,6 +323,19 @@ prop_strict_map_either_whnf entries = ioProperty $ do
         Strict.mapEither
           ( \x ->
               if odd x
+                then Left (mkThunk (x + 1))
+                else Right (mkThunk (x + 2))
+          )
+          m0
+  allWhnfMapPair ms
+
+prop_strict_map_either_with_key_whnf :: [(Word64, Int)] -> Property
+prop_strict_map_either_with_key_whnf entries = ioProperty $ do
+  let m0 = Strict.fromList entries
+  let ms =
+        Strict.mapEitherWithKey
+          ( \k x ->
+              if odd k
                 then Left (mkThunk (x + 1))
                 else Right (mkThunk (x + 2))
           )

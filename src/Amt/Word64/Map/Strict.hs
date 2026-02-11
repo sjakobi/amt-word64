@@ -160,7 +160,14 @@ updateWithKey f k m =
     m
 
 alter :: (Maybe a -> Maybe a) -> Word64 -> Word64Map a -> Word64Map a
-alter f k m = I.alter f k m
+alter f k m =
+  I.alter
+    ( \mv -> case f mv of
+        Nothing -> Nothing
+        Just y -> y `seq` Just y
+    )
+    k
+    m
 
 map :: (a -> b) -> Word64Map a -> Word64Map b
 map = I.map

@@ -64,6 +64,8 @@ tests =
         prop_strict_filter_whnf
     , testProperty "Strict.filterWithKey preserves WHNF values" $
         prop_strict_filter_with_key_whnf
+    , testProperty "Strict.partition preserves WHNF values" $
+        prop_strict_partition_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -282,6 +284,11 @@ prop_strict_filter_with_key_whnf entries = ioProperty $ do
   let m = Strict.filterWithKey (\k _ -> odd k) (Strict.fromList entries)
   allWhnfMap m
 
+prop_strict_partition_whnf :: [(Word64, Int)] -> Property
+prop_strict_partition_whnf entries = ioProperty $ do
+  let ms = Strict.partition even (Strict.fromList entries)
+  allWhnfMapPair ms
+
 -- TODO: This forces the spine of the map.
 -- It would be interesting to have a way to check the values without
 -- forcing the spine.
@@ -290,3 +297,7 @@ prop_strict_filter_with_key_whnf entries = ioProperty $ do
 -- https://stackoverflow.com/a/28687719/1013393
 allWhnfMap :: Strict.Word64Map Int -> IO Bool
 allWhnfMap m = and <$> traverse isWhnfInt m
+
+allWhnfMapPair ::
+  (Strict.Word64Map Int, Strict.Word64Map Int) -> IO Bool
+allWhnfMapPair (m1, m2) = (&&) <$> allWhnfMap m1 <*> allWhnfMap m2

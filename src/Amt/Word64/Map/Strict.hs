@@ -274,7 +274,12 @@ mapMaybe f =
 
 mapMaybeWithKey ::
   (Word64 -> a -> Maybe b) -> Word64Map a -> Word64Map b
-mapMaybeWithKey = I.mapMaybeWithKey
+mapMaybeWithKey f =
+  I.mapMaybeWithKey
+    ( \k x -> case f k x of
+        Nothing -> Nothing
+        Just y -> y `seq` Just y
+    )
 
 mapEither ::
   (a -> Either b c) ->

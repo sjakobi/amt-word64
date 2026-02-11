@@ -62,6 +62,8 @@ tests =
         prop_strict_intersection_with_key_whnf
     , testProperty "Strict.filter preserves WHNF values" $
         prop_strict_filter_whnf
+    , testProperty "Strict.filterWithKey preserves WHNF values" $
+        prop_strict_filter_with_key_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -273,6 +275,11 @@ prop_strict_intersection_with_key_whnf entries1 entries2 k v = ioProperty $ do
 prop_strict_filter_whnf :: [(Word64, Int)] -> Property
 prop_strict_filter_whnf entries = ioProperty $ do
   let m = Strict.filter even (Strict.fromList entries)
+  allWhnfMap m
+
+prop_strict_filter_with_key_whnf :: [(Word64, Int)] -> Property
+prop_strict_filter_with_key_whnf entries = ioProperty $ do
+  let m = Strict.filterWithKey (\k _ -> odd k) (Strict.fromList entries)
   allWhnfMap m
 
 -- TODO: This forces the spine of the map.

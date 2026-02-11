@@ -1,5 +1,4 @@
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ExistentialQuantification #-}
 
 module Main (main) where
 
@@ -8,51 +7,31 @@ import Criterion.Main
 import Data.HashSet qualified as HashSet
 import Data.Word (Word64)
 import GHC.Data.Word64Set qualified as GHCSet
-import System.Random.SplitMix (nextWord64, seedSMGen)
-
-data Impl s = Impl
-  { implName :: String
-  , implEmpty :: s
-  , implInsert :: Word64 -> s -> s
-  , implMember :: Word64 -> s -> Bool
-  }
-
-data SomeImpl = forall s. SomeImpl (Impl s)
-
-impls :: [SomeImpl]
-impls =
-  [ SomeImpl
-      Impl
-        { implName = "amt-word64"
-        , implEmpty = AmtSet.empty
-        , implInsert = AmtSet.insert
-        , implMember = AmtSet.member
-        }
-  , SomeImpl
-      Impl
-        { implName = "ghc-word64set"
-        , implEmpty = GHCSet.empty
-        , implInsert = GHCSet.insert
-        , implMember = GHCSet.member
-        }
-  , SomeImpl
-      Impl
-        { implName = "hashset"
-        , implEmpty = HashSet.empty
-        , implInsert = HashSet.insert
-        , implMember = HashSet.member
-        }
-  ]
+import System.Random.SplitMix (mkSMGen, nextWord64)
 
 sizes :: [Int]
 sizes = [0, 1, 5, 10, 100, 1000, 10000, 100000]
 
-insertAll :: Impl s -> [Word64] -> s
-insertAll impl = foldl' (flip (implInsert impl)) (implEmpty impl)
+insertAllAmt :: [Word64] -> AmtSet.Word64Set
+insertAllAmt = foldl' (flip AmtSet.insert) AmtSet.empty
 
-memberCount :: Impl s -> s -> [Word64] -> Int
-memberCount impl set =
-  foldl' (\acc k -> acc + fromEnum (implMember impl k set)) 0
+insertAllGhc :: [Word64] -> GHCSet.Word64Set
+insertAllGhc = foldl' (flip GHCSet.insert) GHCSet.empty
+
+insertAllHash :: [Word64] -> HashSet.HashSet Word64
+insertAllHash = foldl' (flip HashSet.insert) HashSet.empty
+
+memberCountAmt :: AmtSet.Word64Set -> [Word64] -> Int
+memberCountAmt set =
+  foldl' (\acc k -> acc + fromEnum (AmtSet.member k set)) 0
+
+memberCountGhc :: GHCSet.Word64Set -> [Word64] -> Int
+memberCountGhc set =
+  foldl' (\acc k -> acc + fromEnum (GHCSet.member k set)) 0
+
+memberCountHash :: HashSet.HashSet Word64 -> [Word64] -> Int
+memberCountHash set =
+  foldl' (\acc k -> acc + fromEnum (HashSet.member k set)) 0
 
 contiguousKeys :: Int -> [Word64]
 contiguousKeys n
@@ -60,7 +39,7 @@ contiguousKeys n
   | otherwise = [0 .. fromIntegral (n - 1)]
 
 randomKeys :: Int -> [Word64]
-randomKeys n = go n (seedSMGen seed)
+randomKeys n = go n (mkSMGen seed)
  where
   seed = 0x243f6a8885a308d3
   go 0 _ = []
@@ -68,20 +47,16 @@ randomKeys n = go n (seedSMGen seed)
     let (!w, !s') = nextWord64 s
      in w : go (k - 1) s'
 
-benchInsert :: [Word64] -> SomeImpl -> Benchmark
-benchInsert keys (SomeImpl impl) =
-  bench (implName impl) $ whnf (insertAll impl) keys
-
-benchMember :: [Word64] -> SomeImpl -> Benchmark
-benchMember keys (SomeImpl impl) =
-  let !set = insertAll impl keys
-   in bench (implName impl) $ nf (memberCount impl set) keys
-
-benchKind :: String -> (Int -> [Word64]) -> Benchmark
-benchKind label mkKeys =
+benchInsertKind :: String -> (Int -> [Word64]) -> Benchmark
+benchInsertKind label mkKeys =
   bgroup
     label
-    [ bgroup (show n) (map (benchInsert keys) impls)
+    [ bgroup
+        (show n)
+        [ bench "amt-word64" $ whnf insertAllAmt keys
+        , bench "ghc-word64set" $ whnf insertAllGhc keys
+        , bench "hashset" $ whnf insertAllHash keys
+        ]
     | n <- sizes
     , let keys = mkKeys n
     ]
@@ -90,7 +65,15 @@ benchMemberKind :: String -> (Int -> [Word64]) -> Benchmark
 benchMemberKind label mkKeys =
   bgroup
     label
-    [ bgroup (show n) (map (benchMember keys) impls)
+    [ bgroup
+        (show n)
+        [ let !set = insertAllAmt keys
+           in bench "amt-word64" $ nf (memberCountAmt set) keys
+        , let !set = insertAllGhc keys
+           in bench "ghc-word64set" $ nf (memberCountGhc set) keys
+        , let !set = insertAllHash keys
+           in bench "hashset" $ nf (memberCountHash set) keys
+        ]
     | n <- sizes
     , let keys = mkKeys n
     ]
@@ -100,8 +83,8 @@ main =
   defaultMain
     [ bgroup
         "insert"
-        [ benchKind "contiguous" contiguousKeys
-        , benchKind "random" randomKeys
+        [ benchInsertKind "contiguous" contiguousKeys
+        , benchInsertKind "random" randomKeys
         ]
     , bgroup
         "member"

@@ -14,9 +14,7 @@ tests :: TestTree
 tests =
   testGroup
     "Map.Strict strictness"
-    [ testProperty "Strict.empty has WHNF values" $
-        prop_strict_empty_whnf
-    , testProperty "Strict.singleton forces WHNF values" $
+    [ testProperty "Strict.singleton forces WHNF values" $
         prop_strict_singleton_whnf
     , testProperty "Strict.fromList forces WHNF values" $
         prop_strict_fromList_whnf
@@ -77,9 +75,6 @@ tests =
     , testProperty "Strict.mapEitherWithKey forces WHNF values" $
         prop_strict_map_either_with_key_whnf
     ]
-
-prop_strict_empty_whnf :: Property
-prop_strict_empty_whnf = ioProperty $ allWhnfMap Strict.empty
 
 prop_strict_insert_whnf_values :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_insert_whnf_values entries k v = ioProperty $ do

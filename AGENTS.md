@@ -226,3 +226,17 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - `isWhnfInt` uses `noThunks` and returns `False` on exceptions; `mkThunk` is exported from `StrictnessTooling` and uses `GHC.Exts.lazy`.
 - When enabling Core dumps for a specific test module, `cabal build` may not emit `.dump-simpl` for test-only modules; using `cabal exec -- ghc -ddump-simpl -ddump-to-file -package amt-word64 test/Module.hs` generates dumps reliably.
 - Shared test utilities live in `test/TestUtils.hs`. Use `kListToLazyMap` and `toSortedKList` for K-list conversions instead of duplicating helpers.
+- For `MapStrictness`, prioritize map-producing exports from
+  `Amt.Word64.Map.Strict`; predicates/lookups/folds don’t need WHNF-map
+  result checks.
+- In strictness properties, avoid over-shaping random inputs unless needed for
+  determinism; pre-inserting keys just to force overlap usually adds noise.
+- `mergeWithKey` strictness properties should use non-trivial unmatched-branch
+  handlers (e.g. `mapMaybe`/`filter`) instead of `id`, while still relying on
+  randomized inputs.
+- Efficient strict wrapper patterns in `Strict`: use `alter` for
+  insert/update-style APIs and force `Just` payloads; use `mergeWithKey` for
+  union/intersection-style APIs and force overlap results; use
+  `mapMaybeWithKey`/`mapEitherWithKey` wrappers to force transformed values.
+- If you compile ad hoc probes with `cabal exec -- ghc`, pass an explicit
+  temporary output directory to avoid leaving `.hi`/`.o` files in `test/`.

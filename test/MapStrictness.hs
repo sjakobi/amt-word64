@@ -66,6 +66,8 @@ tests =
         prop_strict_filter_with_key_whnf
     , testProperty "Strict.partition preserves WHNF values" $
         prop_strict_partition_whnf
+    , testProperty "Strict.partitionWithKey preserves WHNF values" $
+        prop_strict_partition_with_key_whnf
     ]
 
 prop_strict_empty_whnf :: Property
@@ -287,6 +289,11 @@ prop_strict_filter_with_key_whnf entries = ioProperty $ do
 prop_strict_partition_whnf :: [(Word64, Int)] -> Property
 prop_strict_partition_whnf entries = ioProperty $ do
   let ms = Strict.partition even (Strict.fromList entries)
+  allWhnfMapPair ms
+
+prop_strict_partition_with_key_whnf :: [(Word64, Int)] -> Property
+prop_strict_partition_with_key_whnf entries = ioProperty $ do
+  let ms = Strict.partitionWithKey (\k _ -> odd k) (Strict.fromList entries)
   allWhnfMapPair ms
 
 -- TODO: This forces the spine of the map.

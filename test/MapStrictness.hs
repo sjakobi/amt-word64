@@ -3,7 +3,6 @@ module MapStrictness
   ) where
 
 import Amt.Word64.Map.Strict qualified as Strict
-import Control.DeepSeq (deepseq)
 import Data.Bifunctor (second)
 import Data.Word (Word64)
 import StrictnessTooling (isWhnfInt, mkThunk)
@@ -30,7 +29,6 @@ tests =
 prop_strict_insert_whnf_values :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_insert_whnf_values entries k v = ioProperty $ do
   let m0 = Strict.fromList entries
-  m0 `deepseq` pure ()
   let vThunk = mkThunk $ v + 1
   let m1 = Strict.insert k vThunk m0
   allWhnfMap m1
@@ -50,7 +48,6 @@ prop_strict_fromList_whnf entries = ioProperty $ do
 prop_strict_adjust_whnf :: [(Word64, Int)] -> Word64 -> Int -> Property
 prop_strict_adjust_whnf entries k v = ioProperty $ do
   let m0 = Strict.fromList ((k, v) : entries)
-  m0 `deepseq` pure ()
   let vThunk = mkThunk v
   let m1 = Strict.adjust (\_ -> vThunk) k m0
   allWhnfMap m1
@@ -59,7 +56,6 @@ prop_strict_union_whnf :: [(Word64, Int)] -> [(Word64, Int)] -> Property
 prop_strict_union_whnf entries1 entries2 = ioProperty $ do
   let m1 = Strict.fromList entries1
   let m2 = Strict.fromList entries2
-  m1 `deepseq` m2 `deepseq` pure ()
   let m = Strict.union m1 m2
   allWhnfMap m
 

@@ -65,7 +65,6 @@ import Amt.Word64.Map.Internal
   , findWithDefault
   , foldlWithKey'
   , foldrWithKey
-  , intersection
   , isSubmapOf
   , isSubmapOfBy
   , keys
@@ -233,6 +232,13 @@ differenceWith f =
         Nothing -> Nothing
         Just z -> z `seq` Just z
     )
+
+intersection :: Word64Map a -> Word64Map b -> Word64Map a
+intersection =
+  I.mergeWithKey
+    (\_ x _ -> x `seq` Just x)
+    (const empty)
+    (const empty)
 
 intersectionWith :: (a -> b -> c) -> Word64Map a -> Word64Map b -> Word64Map c
 intersectionWith = I.intersectionWith

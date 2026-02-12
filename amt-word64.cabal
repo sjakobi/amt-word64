@@ -141,6 +141,7 @@ benchmark amt-word64-bench
         base >=4.20 && <4.23,
         amt-word64,
         criterion,
+        deepseq,
         ghc,
         splitmix,
         unordered-containers

@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Amt.Word64.Set qualified as AmtSet
+import Control.DeepSeq (deepseq)
 import Criterion.Main
 import Data.HashSet qualified as HashSet
 import Data.Word (Word64)
@@ -128,12 +129,12 @@ benchMemberPresentKind label tag mkKeys =
           queries = presentQueries keys (seedFor presentSeedBase tag n)
        in bgroup
             (show n)
-            [ let !set = insertAllAmt keys
-               in bench "amt-word64" $ nf (memberCountAmt set) queries
-            , let !set = insertAllGhc keys
-               in bench "ghc-word64set" $ nf (memberCountGhc set) queries
-            , let !set = insertAllHash keys
-               in bench "hashset" $ nf (memberCountHash set) queries
+            [ let set = insertAllAmt keys
+               in set `deepseq` bench "amt-word64" (nf (memberCountAmt set) queries)
+            , let set = insertAllGhc keys
+               in set `deepseq` bench "ghc-word64set" (nf (memberCountGhc set) queries)
+            , let set = insertAllHash keys
+               in set `deepseq` bench "hashset" (nf (memberCountHash set) queries)
             ]
     | n <- sizes
     , n > 0
@@ -148,12 +149,12 @@ benchMemberAbsentKind label tag mkKeys =
           queries = absentQueries (`AmtSet.member` baseAmt) (seedFor absentSeedBase tag n)
        in bgroup
             (show n)
-            [ let !set = baseAmt
-               in bench "amt-word64" $ nf (memberCountAmt set) queries
-            , let !set = insertAllGhc keys
-               in bench "ghc-word64set" $ nf (memberCountGhc set) queries
-            , let !set = insertAllHash keys
-               in bench "hashset" $ nf (memberCountHash set) queries
+            [ let set = baseAmt
+               in set `deepseq` bench "amt-word64" (nf (memberCountAmt set) queries)
+            , let set = insertAllGhc keys
+               in set `deepseq` bench "ghc-word64set" (nf (memberCountGhc set) queries)
+            , let set = insertAllHash keys
+               in set `deepseq` bench "hashset" (nf (memberCountHash set) queries)
             ]
     | n <- sizes
     ]

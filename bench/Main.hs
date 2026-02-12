@@ -39,15 +39,6 @@ insertAllGhc = foldl' (flip GHCSet.insert) GHCSet.empty
 insertAllHash :: [Word64] -> HashSet.HashSet Word64
 insertAllHash = foldl' (flip HashSet.insert) HashSet.empty
 
-insertManyAmt :: AmtSet.Word64Set -> [Word64] -> AmtSet.Word64Set
-insertManyAmt = foldl' (flip AmtSet.insert)
-
-insertManyGhc :: GHCSet.Word64Set -> [Word64] -> GHCSet.Word64Set
-insertManyGhc = foldl' (flip GHCSet.insert)
-
-insertManyHash :: HashSet.HashSet Word64 -> [Word64] -> HashSet.HashSet Word64
-insertManyHash = foldl' (flip HashSet.insert)
-
 memberCountAmt :: AmtSet.Word64Set -> [Word64] -> Int
 memberCountAmt set =
   foldl' (\acc k -> acc + fromEnum (AmtSet.member k set)) 0
@@ -85,12 +76,35 @@ seedFor :: Word64 -> Word64 -> Int -> Word64
 seedFor base tag n =
   base + tag + seedMixConst * fromIntegral n
 
-presentQueries :: Word64 -> [Word64]
-presentQueries seed = take queryCount (randomWords seed)
+presentQueries :: [Word64] -> Word64 -> [Word64]
+presentQueries keys seed =
+  case length keys of
+    0 -> []
+    len ->
+      let count = min queryCount len
+          picks = take count (selectKeys keys len (randomWords seed))
+       in take queryCount (cycle picks)
 
 absentQueries :: (Word64 -> Bool) -> Word64 -> [Word64]
 absentQueries isMember seed =
   take queryCount $ filter (not . isMember) (randomWords seed)
+
+selectKeys :: [Word64] -> Int -> [Word64] -> [Word64]
+selectKeys keys len =
+  map (indexKey keys len)
+
+indexKey :: [Word64] -> Int -> Word64 -> Word64
+indexKey keys len w =
+  indexList keys idx
+ where
+  idx = fromIntegral (w `mod` fromIntegral len)
+
+indexList :: [a] -> Int -> a
+indexList xs i = go xs i
+ where
+  go (y : _) 0 = y
+  go (_ : ys) n = go ys (n - 1)
+  go [] _ = error "indexList: empty"
 
 benchInsertKind :: String -> (Int -> [Word64]) -> Benchmark
 benchInsertKind label mkKeys =
@@ -111,17 +125,18 @@ benchMemberPresentKind label tag mkKeys =
   bgroup
     label
     [ let keys = mkKeys n
-          queries = presentQueries (seedFor presentSeedBase tag n)
+          queries = presentQueries keys (seedFor presentSeedBase tag n)
        in bgroup
             (show n)
-            [ let !set = insertManyAmt (insertAllAmt keys) queries
+            [ let !set = insertAllAmt keys
                in bench "amt-word64" $ nf (memberCountAmt set) queries
-            , let !set = insertManyGhc (insertAllGhc keys) queries
+            , let !set = insertAllGhc keys
                in bench "ghc-word64set" $ nf (memberCountGhc set) queries
-            , let !set = insertManyHash (insertAllHash keys) queries
+            , let !set = insertAllHash keys
                in bench "hashset" $ nf (memberCountHash set) queries
             ]
     | n <- sizes
+    , n > 0
     ]
 
 benchMemberAbsentKind :: String -> Word64 -> (Int -> [Word64]) -> Benchmark

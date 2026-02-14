@@ -50,7 +50,7 @@ bitsPerLevel :: Int
 bitsPerLevel = 6
 {-# INLINE bitsPerLevel #-}
 
--- | Mask for extracting the slot at a shift.
+-- | Mask for extracting the subkey/slot from a 'Word64' key.
 subkeyMask :: Word64
 subkeyMask = (1 `unsafeShiftL` bitsPerLevel) - 1
 {-# INLINE subkeyMask #-}
@@ -94,11 +94,10 @@ clearLowBit :: Word64 -> Word64
 clearLowBit w = w .&. (w - 1)
 {-# INLINE clearLowBit #-}
 
-{- | Compute the bitmap bit for the slot of @k@ at @shift@ and return the 'Index'.
+{- | Given a 'Shift' representing the level of the tree, a 'Word64' key and the
+'Bitmap' of a 'Branch' node, compute 'Index' into that node.
 
-The slot is derived by shifting and masking the key, and the compact array index
-is computed by counting bitmap bits below that slot. Use this when the array
-index is needed regardless of presence.
+When the array index is only needed if the slot is present, use 'indexIfPresent' instead.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift !k (BM bm) =

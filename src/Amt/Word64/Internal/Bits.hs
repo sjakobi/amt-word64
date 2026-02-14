@@ -4,7 +4,7 @@
 module Amt.Word64.Internal.Bits
   ( Bitmap (..)
   , Index (..)
-  , BitMatch (..)
+  , SlotState (..)
   , Shift
   , ShiftBox (..)
   , bitsPerLevel
@@ -37,10 +37,10 @@ and whether the bit is present.
 The array index is the position in the compact 'SmallArray' for this slot.
 Construct with 'index' when the array index is needed regardless of presence.
 -}
-data Index = Index !Bitmap !Int !BitMatch
+data Index = Index !Bitmap !Int !SlotState
 
 -- | Does the Bitmap contain the slot for the Word64 at the given Shift?
-data BitMatch = NoMatch | Match
+data SlotState = SlotEmpty | SlotPresent
 
 -- | Unlifted shift counter in multiples of 'bitsPerLevel'.
 type Shift = Int#
@@ -105,7 +105,7 @@ index shift !k (BM bm) =
   let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
       bit = 1 `unsafeShiftL` slot
       i = popCount (bm .&. (bit - 1))
-      match = if bm .&. bit == 0 then NoMatch else Match
+      match = if bm .&. bit == 0 then SlotEmpty else SlotPresent
    in Index (BM bit) i match
 {-# INLINE index #-}
 

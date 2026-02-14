@@ -53,7 +53,7 @@ module Amt.Word64.Map.Internal
   ( Word64Map (..)
   , Bitmap (..)
   , Index (..)
-  , BitMatch (..)
+  , SlotState (..)
   , Shift
   , ShiftBox (..)
   , empty
@@ -107,11 +107,11 @@ module Amt.Word64.Map.Internal
   ) where
 
 import Amt.Word64.Internal.Bits
-  ( BitMatch (..)
-  , Bitmap (..)
+  ( Bitmap (..)
   , Index (..)
   , Shift
   , ShiftBox (..)
+  , SlotState (..)
   , clearLowBit
   , index
   , indexMatch
@@ -438,11 +438,11 @@ insert !k v m = case m of
     | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
     case index 0# k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift 0#) k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Unsafe insert that mutates arrays in-place under the hood.
@@ -463,11 +463,11 @@ insertWithKey f !k v m = case m of
     | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
     case index 0# k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = insertWithKeyAtShift (nextShift 0#) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Only valid for internal nodes.
@@ -479,11 +479,11 @@ insertWithKeyAtShift s f !k v m = case m of
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = insertWithKeyAtShift (nextShift s) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Only valid for internal nodes.
@@ -494,11 +494,11 @@ insertAtShift s !k v m = case m of
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift s) k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 -- | Unsafe insert using in-place updates. Expects a non-empty root.
@@ -509,12 +509,12 @@ insertAtShiftUnsafe s !k v m = case m of
     | otherwise -> pure (two s k v k' v')
   branch@(Branch (BM bm) ary) ->
     case index s k (BM bm) of
-      Index _ i Match -> do
+      Index _ i SlotPresent -> do
         let child = indexSmallArray ary i
         newChild <- insertAtShiftUnsafe (nextShift s) k v child
         _ <- updateAtUnsafe i newChild ary
         pure branch
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         pure (Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary))
 
 two :: Shift -> Word64 -> a -> Word64 -> a -> Word64Map a
@@ -544,8 +544,8 @@ deleteAtShift shift !k m = del shift m
   del _ leaf@(Leaf _ _) = leaf
   del s (Branch (BM bm) ary) =
     case index s k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
-      Index (BM bit) i Match ->
+      Index _ _ SlotEmpty -> Branch (BM bm) ary
+      Index (BM bit) i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = del (nextShift s) child
          in if null newChild
@@ -568,8 +568,8 @@ adjustWithKey f !k m = adj 0# m
     | otherwise = Leaf k' v
   adj shift (Branch (BM bm) ary) =
     case index shift k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
-      Index _ i Match ->
+      Index _ _ SlotEmpty -> Branch (BM bm) ary
+      Index _ i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = adj (nextShift shift) child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -705,11 +705,11 @@ insertIfNotExistsAtShift shift !k v m = case m of
     | otherwise -> two shift k v k' v'
   Branch (BM bm) ary ->
     case index shift k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let child = indexSmallArray ary i
             newChild = insertIfNotExistsAtShift (nextShift shift) k v child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k v) ary)
 
 fromList :: [(Word64, a)] -> Word64Map a
@@ -778,16 +778,16 @@ mergeWithKey f g1 g2 m1_ m2_ = merge 0# m1_ m2_
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 (Leaf k2 v2))
   merge shift (Leaf k1 v1) m2@(Branch (BM bm2) ary2) =
     case index shift k1 (BM bm2) of
-      Index _ _ NoMatch ->
+      Index _ _ SlotEmpty ->
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 m2)
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let (newBm, newAry) = runST (mergeLeafVsBranch shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
   merge shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
     case index shift k2 (BM bm1) of
-      Index _ _ NoMatch ->
+      Index _ _ SlotEmpty ->
         unionAtShiftHandleEmpty shift (g1 m1) (g2 (Leaf k2 v2))
-      Index _ i Match ->
+      Index _ i SlotPresent ->
         let (newBm, newAry) = runST (mergeBranchVsLeaf shift k2 v2 bm1 ary1 i)
          in collapse (BM newBm) newAry
   merge shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =

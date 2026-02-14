@@ -43,7 +43,7 @@ import Amt.Word64.Internal.Bits
   , SlotState (..)
   , clearLowBit
   , index
-  , indexMatch
+  , indexIfSlotPresent
   , lowBit
   , nextShift
   , shiftGE64
@@ -271,7 +271,7 @@ memberAtShift# shift k = go shift
           1# -> True
           _ -> False
   go s (Branch (BM bm) ary) =
-    case indexMatch s (W64# k) (BM bm) of
+    case indexIfSlotPresent s (W64# k) (BM bm) of
       Nothing -> False
       Just i -> go (nextShift s) (indexSmallArray ary i)
 

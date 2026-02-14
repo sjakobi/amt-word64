@@ -16,7 +16,7 @@ module Amt.Word64.Internal.Bits
   , lowBit
   , clearLowBit
   , index
-  , indexMatch
+  , indexIfSlotPresent
   ) where
 
 import Data.Bits hiding (bit, shift)
@@ -97,7 +97,8 @@ clearLowBit w = w .&. (w - 1)
 {- | Given a 'Shift' representing the level of the tree, a 'Word64' key and the
 'Bitmap' of a 'Branch' node, compute 'Index' into that node.
 
-When the array index is only needed if the slot is present, use 'indexIfPresent' instead.
+When the array index is only needed if the slot is present, use
+'indexIfSlotPresent' instead.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift !k (BM bm) =
@@ -112,11 +113,11 @@ index shift !k (BM bm) =
 
 This avoids a 'popCount' when the lookup misses.
 -}
-indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
-indexMatch shift !k (BM bm) =
+indexIfSlotPresent :: Shift -> Word64 -> Bitmap -> Maybe Int
+indexIfSlotPresent shift !k (BM bm) =
   let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
       bit = 1 `unsafeShiftL` slot
    in if bm .&. bit == 0
         then Nothing
         else Just (popCount (bm .&. (bit - 1)))
-{-# INLINE indexMatch #-}
+{-# INLINE indexIfSlotPresent #-}

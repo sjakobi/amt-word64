@@ -27,7 +27,7 @@ derives the slot, then:
 > arrayIndex = popCount (bm .&. (bit - 1))
 
 so the array index counts the set bits in the bitmap below the slot. Use
-'indexMatch' to skip the 'popCount' when the slot bit is absent. Advance to the
+'indexIfSlotPresent' to skip the 'popCount' when the slot bit is absent. Advance to the
 next level with 'nextShift' (adds 'bitsPerLevel').
 
 Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the slots are:
@@ -114,7 +114,7 @@ import Amt.Word64.Internal.Bits
   , SlotState (..)
   , clearLowBit
   , index
-  , indexMatch
+  , indexIfSlotPresent
   , lowBit
   , nextShift
   , shiftGE64
@@ -396,7 +396,7 @@ lookupAtShift# shift k = lookup_ shift
           1# -> Just v
           _ -> Nothing
   lookup_ s (Branch (BM bm) ary) =
-    case indexMatch s (W64# k) (BM bm) of
+    case indexIfSlotPresent s (W64# k) (BM bm) of
       Nothing -> Nothing
       Just i -> lookup_ (nextShift s) (indexSmallArray ary i)
 

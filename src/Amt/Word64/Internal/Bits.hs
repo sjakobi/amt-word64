@@ -16,7 +16,7 @@ module Amt.Word64.Internal.Bits
   , lowBit
   , clearLowBit
   , index
-  , indexIfSlotPresent
+  , indexIfSlotOccupied
   ) where
 
 import Data.Bits hiding (bit, shift)
@@ -40,7 +40,7 @@ Construct with 'index' when the array index is needed regardless of presence.
 data Index = Index !Bitmap !Int !SlotState
 
 -- | Does the Bitmap contain the slot for the Word64 at the given Shift?
-data SlotState = SlotEmpty | SlotPresent
+data SlotState = SlotEmpty | SlotOccupied
 
 -- | Unlifted shift counter in multiples of 'bitsPerLevel'.
 type Shift = Int#
@@ -98,14 +98,14 @@ clearLowBit w = w .&. (w - 1)
 'Bitmap' of a 'Branch' node, compute 'Index' into that node.
 
 When the array index is only needed if the slot is present, use
-'indexIfSlotPresent' instead.
+'indexIfSlotOccupied' instead.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift !k (BM bm) =
   let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
       bit = 1 `unsafeShiftL` slot
       i = popCount (bm .&. (bit - 1))
-      match = if bm .&. bit == 0 then SlotEmpty else SlotPresent
+      match = if bm .&. bit == 0 then SlotEmpty else SlotOccupied
    in Index (BM bit) i match
 {-# INLINE index #-}
 
@@ -113,11 +113,11 @@ index shift !k (BM bm) =
 
 This avoids a 'popCount' when the lookup misses.
 -}
-indexIfSlotPresent :: Shift -> Word64 -> Bitmap -> Maybe Int
-indexIfSlotPresent shift !k (BM bm) =
+indexIfSlotOccupied :: Shift -> Word64 -> Bitmap -> Maybe Int
+indexIfSlotOccupied shift !k (BM bm) =
   let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
       bit = 1 `unsafeShiftL` slot
    in if bm .&. bit == 0
         then Nothing
         else Just (popCount (bm .&. (bit - 1)))
-{-# INLINE indexIfSlotPresent #-}
+{-# INLINE indexIfSlotOccupied #-}

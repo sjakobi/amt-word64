@@ -27,7 +27,7 @@ derives the slot, then:
 > arrayIndex = popCount (bm .&. (bit - 1))
 
 so the array index counts the set bits in the bitmap below the slot. Use
-'indexIfSlotPresent' to skip the 'popCount' when the slot bit is absent. Advance to the
+'indexIfSlotOccupied' to skip the 'popCount' when the slot bit is absent. Advance to the
 next level with 'nextShift' (adds 'bitsPerLevel').
 
 Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the slots are:
@@ -114,7 +114,7 @@ import Amt.Word64.Internal.Bits
   , SlotState (..)
   , clearLowBit
   , index
-  , indexIfSlotPresent
+  , indexIfSlotOccupied
   , lowBit
   , nextShift
   , shiftGE64
@@ -396,7 +396,7 @@ lookupAtShift# shift k = lookup_ shift
           1# -> Just v
           _ -> Nothing
   lookup_ s (Branch (BM bm) ary) =
-    case indexIfSlotPresent s (W64# k) (BM bm) of
+    case indexIfSlotOccupied s (W64# k) (BM bm) of
       Nothing -> Nothing
       Just i -> lookup_ (nextShift s) (indexSmallArray ary i)
 
@@ -438,7 +438,7 @@ insert !k v m = case m of
     | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
     case index 0# k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift 0#) k v child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -463,7 +463,7 @@ insertWithKey f !k v m = case m of
     | otherwise -> two 0# k v k' v'
   Branch (BM bm) ary ->
     case index 0# k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertWithKeyAtShift (nextShift 0#) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -479,7 +479,7 @@ insertWithKeyAtShift s f !k v m = case m of
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertWithKeyAtShift (nextShift s) f k v child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -494,7 +494,7 @@ insertAtShift s !k v m = case m of
     | otherwise -> two s k v k' v'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift s) k v child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -509,7 +509,7 @@ insertAtShiftUnsafe s !k v m = case m of
     | otherwise -> pure (two s k v k' v')
   branch@(Branch (BM bm) ary) ->
     case index s k (BM bm) of
-      Index _ i SlotPresent -> do
+      Index _ i SlotOccupied -> do
         let child = indexSmallArray ary i
         newChild <- insertAtShiftUnsafe (nextShift s) k v child
         _ <- updateAtUnsafe i newChild ary
@@ -545,7 +545,7 @@ deleteAtShift shift !k m = del shift m
   del s (Branch (BM bm) ary) =
     case index s k (BM bm) of
       Index _ _ SlotEmpty -> Branch (BM bm) ary
-      Index (BM bit) i SlotPresent ->
+      Index (BM bit) i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = del (nextShift s) child
          in if null newChild
@@ -569,7 +569,7 @@ adjustWithKey f !k m = adj 0# m
   adj shift (Branch (BM bm) ary) =
     case index shift k (BM bm) of
       Index _ _ SlotEmpty -> Branch (BM bm) ary
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = adj (nextShift shift) child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -705,7 +705,7 @@ insertIfNotExistsAtShift shift !k v m = case m of
     | otherwise -> two shift k v k' v'
   Branch (BM bm) ary ->
     case index shift k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertIfNotExistsAtShift (nextShift shift) k v child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -780,14 +780,14 @@ mergeWithKey f g1 g2 m1_ m2_ = merge 0# m1_ m2_
     case index shift k1 (BM bm2) of
       Index _ _ SlotEmpty ->
         unionAtShiftHandleEmpty shift (g1 (Leaf k1 v1)) (g2 m2)
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let (newBm, newAry) = runST (mergeLeafVsBranch shift k1 v1 bm2 ary2 i)
          in collapse (BM newBm) newAry
   merge shift m1@(Branch (BM bm1) ary1) (Leaf k2 v2) =
     case index shift k2 (BM bm1) of
       Index _ _ SlotEmpty ->
         unionAtShiftHandleEmpty shift (g1 m1) (g2 (Leaf k2 v2))
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let (newBm, newAry) = runST (mergeBranchVsLeaf shift k2 v2 bm1 ary1 i)
          in collapse (BM newBm) newAry
   merge shift (Branch (BM bm1) ary1) (Branch (BM bm2) ary2) =

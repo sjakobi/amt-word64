@@ -43,7 +43,7 @@ import Amt.Word64.Internal.Bits
   , SlotState (..)
   , clearLowBit
   , index
-  , indexIfSlotPresent
+  , indexIfSlotOccupied
   , lowBit
   , nextShift
   , shiftGE64
@@ -271,7 +271,7 @@ memberAtShift# shift k = go shift
           1# -> True
           _ -> False
   go s (Branch (BM bm) ary) =
-    case indexIfSlotPresent s (W64# k) (BM bm) of
+    case indexIfSlotOccupied s (W64# k) (BM bm) of
       Nothing -> False
       Just i -> go (nextShift s) (indexSmallArray ary i)
 
@@ -296,7 +296,7 @@ insert !k m = case m of
     | otherwise -> two 0# k k'
   Branch (BM bm) ary ->
     case index 0# k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift 0#) k child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -317,7 +317,7 @@ insertAtShift s !k m = case m of
     | otherwise -> two s k k'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift s) k child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -332,7 +332,7 @@ insertAtShiftUnsafe s !k m = case m of
     | otherwise -> pure (two s k k')
   branch@(Branch (BM bm) ary) ->
     case index s k (BM bm) of
-      Index _ i SlotPresent -> do
+      Index _ i SlotOccupied -> do
         let child = indexSmallArray ary i
         newChild <- insertAtShiftUnsafe (nextShift s) k child
         _ <- updateAtUnsafe i newChild ary
@@ -348,7 +348,7 @@ insertIfNotExistsAtShift s !k m = case m of
     | otherwise -> two s k k'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i SlotPresent ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertIfNotExistsAtShift (nextShift s) k child
          in Branch (BM bm) (updateAt i newChild ary)
@@ -383,7 +383,7 @@ deleteAtShift shift !k m = go shift m
   go s (Branch (BM bm) ary) =
     case index s k (BM bm) of
       Index _ _ SlotEmpty -> Branch (BM bm) ary
-      Index (BM bit) i SlotPresent ->
+      Index (BM bit) i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = go (nextShift s) child
          in if null newChild

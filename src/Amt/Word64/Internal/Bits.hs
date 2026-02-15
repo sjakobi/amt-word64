@@ -32,10 +32,7 @@ import GHC.Exts
 newtype Bitmap = BM Word64
   deriving (Eq)
 
-{- | Bitmap query result: bit mask for the current subkey/slot, compact array index,
-and whether the slot is occupied.
-
-The array index is the position in the compact 'SmallArray' for this slot.
+{- | Bitmap query result.
 
 Construct with 'index' when the array index is needed regardless of presence.
 Otherwise it is more efficient to use 'indexIfSlotOccupied'.

@@ -562,6 +562,8 @@ deleteAtShift shift !k m = del shift m
   del _ (Leaf k' _) | k == k' = empty
   del _ leaf@(Leaf _ _) = leaf
   del s branch@(Branch (BM bm) ary) =
+    -- TODO: Avoid computing popCount on misses here by switching to
+    -- indexIfSlotOccupied so SlotEmpty returns early without rank work.
     case index s k (BM bm) of
       Index _ _ SlotEmpty -> branch
       Index (BM bit) i SlotOccupied ->

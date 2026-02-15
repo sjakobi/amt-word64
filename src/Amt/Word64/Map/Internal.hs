@@ -11,43 +11,46 @@
 >   = Branch !Bitmap !(SmallArray (Word64Map a))
 >   | Leaf !Word64 a
 
-A /slot/ is the 6-bit slice of a key used at one level. Navigation consumes the
-key from least-significant bits upward. At a node with shift @s@, the slot is:
+A /subkey/ is the 6-bit slice of a key used at one level. Navigation consumes
+the key from least-significant bits upward. At a node with shift @s@, the
+subkey is:
 
-> slot = (k `unsafeShiftR` shiftToInt s) .&. subkeyMask
+> subkey = (k `unsafeShiftR` shiftToInt s) .&. subkeyMask
 
-The slot is in the range 0-63. A 'Branch' stores a 'Bitmap' with the slot bit
-set when a child exists, and the children are packed densely in a
-'SmallArray' ordered by increasing slot.
+Subkeys are in the range 0-63. A /slot/ is the branch position addressed by a
+subkey, so the slot number and subkey value are the same. A 'Branch' stores a
+'Bitmap' with the slot bit set when a child exists, and children are packed
+densely in a 'SmallArray' ordered by increasing subkey/slot.
 
-'index' computes both the bit and compact array index for a slot. It first
-derives the slot, then:
+'index' computes both the bit and compact array index for a subkey/slot. It
+first derives the subkey, then:
 
-> bit = 1 `unsafeShiftL` slot
+> bit = 1 `unsafeShiftL` subkey
 > arrayIndex = popCount (bm .&. (bit - 1))
 
-so the array index counts the set bits in the bitmap below the slot. Use
-'indexIfSlotOccupied' to skip the 'popCount' when the slot bit is absent. Advance to the
-next level with 'nextShift' (adds 'bitsPerLevel').
+so the array index counts the set bits in the bitmap below that subkey/slot.
+Use 'indexIfSlotOccupied' to skip the 'popCount' when the slot bit is absent.
+Advance to the next level with 'nextShift' (adds 'bitsPerLevel').
 
-Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the slots are:
+Example: for key @0x0123456789ABCDEF@ with @bitsPerLevel = 6@, the
+subkeys/slots are:
 
-- shift 0: slot = 0x2f (47)
-- shift 6: slot = 0x37 (55)
-- shift 12: slot = 0x3c (60)
-- shift 18: slot = 0x2a (42)
-- shift 24: slot = 0x09 (9)
-- shift 30: slot = 0x1e (30)
-- shift 36: slot = 0x16 (22)
-- shift 42: slot = 0x11 (17)
-- shift 48: slot = 0x23 (35)
-- shift 54: slot = 0x04 (4)
-- shift 60: slot = 0x00 (0)
+- shift 0: subkey = 0x2f (47)
+- shift 6: subkey = 0x37 (55)
+- shift 12: subkey = 0x3c (60)
+- shift 18: subkey = 0x2a (42)
+- shift 24: subkey = 0x09 (9)
+- shift 30: subkey = 0x1e (30)
+- shift 36: subkey = 0x16 (22)
+- shift 42: subkey = 0x11 (17)
+- shift 48: subkey = 0x23 (35)
+- shift 54: subkey = 0x04 (4)
+- shift 60: subkey = 0x00 (0)
 
 Lookup starts at shift 0 and uses 'index' to select the child. If the bitmap
-does not contain the slot bit, the key is absent; otherwise the compact array
-index returned by 'index' selects the child, and the search continues at the
-next shift until a 'Leaf' matches the key.
+does not contain the subkey's slot bit, the key is absent; otherwise the
+compact array index returned by 'index' selects the child, and the search
+continues at the next shift until a 'Leaf' matches the key.
 -}
 module Amt.Word64.Map.Internal
   ( Word64Map (..)

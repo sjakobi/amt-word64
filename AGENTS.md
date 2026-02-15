@@ -14,7 +14,18 @@ This document provides essential context and guidelines for agents working on th
   - `Branch !Bitmap !(SmallArray (Word64Map a))`: An internal node.
   - `Leaf !Word64 a`: A terminal node containing a key and value.
 - **`Bitmap`**: A `newtype` wrapper around `Word64`, where each set bit represents a child's presence in the `SmallArray`.
+- **`Index`**: `Index !Bitmap !Int !SlotState`, where fields represent the
+  singleton slot bit, compact child-array index, and occupancy state.
+- **`SlotState`**: `SlotEmpty | SlotOccupied`.
 - **`Shift`**: An `Int` representing the bit position (multiples of 6) currently being inspected.
+
+### Subkey and Slot Terminology
+
+- A **subkey** is the 6-bit slice selected at one trie level:
+  `((unsafeShiftR k (shiftToInt s)) .&. subkeyMask)`.
+- A **slot** is the branch position addressed by that subkey.
+- Subkey values and slot numbers are the same (`0..63`); docs may use
+  `subkey/slot` when discussing both viewpoints together.
 
 ### Invariants
 
@@ -94,10 +105,17 @@ collapse bm ary = case sizeofSmallArray ary of
 
 ### Bit Manipulation
 
-The trie uses 6 bits per level. The `index` function is central to navigating the tree:
+The trie uses 6 bits per level. `index` is central to navigation and computes
+both slot bit and compact child-array position:
 
 ```haskell
 index :: Shift -> Word64 -> Bitmap -> Index
+```
+
+When the array position is only needed for occupied slots, use:
+
+```haskell
+indexIfSlotOccupied :: Shift -> Word64 -> Bitmap -> Maybe Int
 ```
 
 ## Testing and Verification

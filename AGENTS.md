@@ -217,6 +217,18 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
 - Keep `Word64` key arguments strict (`!k`, `!k1`, `!k2`, etc.) across the module.
 - When renaming local recursion helpers for Core readability, prefer short, unique names (e.g., `diff`, `inter`, `mapMb`, `partArr`) to keep dumps compact and search-friendly.
 - Module layout: `Amt.Word64.Map.Internal` contains the implementation and exports internal types/constructors; `Amt.Word64.Map.Lazy` re-exports the public API; `Amt.Word64.Map` re-exports `Amt.Word64.Map.Lazy`. Tests import `Amt.Word64.Map.Lazy`, and can import `Amt.Word64.Map.Internal` qualified when needed.
+- Terminology changes should be applied consistently in one pass across
+  `Amt.Word64.Internal.Bits`, `Amt.Word64.Map.Internal`,
+  `Amt.Word64.Set.Internal`, and the module-level
+  "Navigating an array-mapped trie" Haddock to avoid churn.
+- Current preferred terms are `subkey` (6-bit key slice), `slot` (branch
+  position for that subkey), `SlotOccupied`, and
+  `indexIfSlotOccupied`.
+- For large mechanical renames, a repo-local scripted replacement (e.g.
+  `perl -0pi -e 's/old/new/g' ...`) followed by `rg` verification is faster
+  than hand edits.
+- `rg` exits with status `1` when there are no matches; treat that as
+  expected for post-rename verification.
 - Before building a new PR on top of `master`, check what was just merged (e.g., `git log origin/master..branch`) to avoid cherry-picking already-merged commits and unnecessary conflicts.
 - To find line-level review comments quickly, use `gh api repos/<owner>/<repo>/pulls/<pr>/comments`; review bodies can be empty, so rely on the comments API for actionable items.
 - For PR replies, `gh pr comment <number> --body "<text>"` is the quick path; line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.

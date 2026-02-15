@@ -104,7 +104,7 @@ clearLowBit w = w .&. (w - 1)
 {- | Given a 'Shift' representing the level of the tree, a 'Word64' key and the
 'Bitmap' of a 'Branch' node, compute 'Index' into that node.
 
-When the array index is only needed if the slot is present, use
+When the array index is only needed if the slot is occupied, use
 'indexIfSlotOccupied' instead.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
@@ -116,7 +116,7 @@ index shift !k (BM bm) =
    in Index (BM bit) i match
 {-# INLINE index #-}
 
-{- | Like 'index', but only returns the array index when the slot bit is present.
+{- | Like 'index', but only returns the array index when the slot is occupied.
 
 This avoids a 'popCount' when the lookup misses.
 -}

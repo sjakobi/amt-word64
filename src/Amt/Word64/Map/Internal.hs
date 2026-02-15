@@ -331,6 +331,7 @@ word64MapDataType =
 
 fromListConstr :: Constr
 fromListConstr = mkConstr word64MapDataType "fromList" [] Prefix
+
 valid :: Word64Map a -> Maybe InvariantViolation
 valid (Branch (BM 0) ary)
   | n == 0 = Nothing
@@ -380,6 +381,7 @@ validSubtrees shift prefix bm ary
             )
             bits
             children
+
 empty :: Word64Map a
 empty = Branch (BM 0) mempty
 {-# NOINLINE empty #-}

@@ -67,11 +67,15 @@ Example: `CABAL_DIR=/tmp/cabal cabal build`
 6. **CI Compliance**: Ensure your changes pass the CI check, which fails on warnings for the latest GHC.
 7. **File Operations**: Agents have standing permission to read, create, or modify any files within this repository as needed to fulfill their tasks. There is no need to ask for explicit permission for these operations. This permission is explicitly confirmed and should be treated as durable for this repo.
 8. **Command Permissions**: Do not ask before creating commits on feature branches. You have standing permission to run non-destructive git commands (`status`, `log`, `diff`, `add`, `stash`, `switch`, `fetch`, `push`, `rebase`, `worktree add/remove`). You may also run standard build/test commands (`cabal build`, `cabal run tests -- --hide-successes`, `cabal run`, `cabal clean`) and formatting (`fourmolu --mode inplace src test`) without asking. For network calls, `gh` is permitted for PR creation and review fetching, provided it does not perform destructive operations. Ask before running destructive commands like `reset --hard`, `checkout --`, or rewriting remote history unless explicitly requested.
-9. **Commit Message Format**: Keep lines under 72 characters. Use a short subject line, then include an explanatory paragraph when the change is non-trivial or benefits from context; use judgement for small changes. In the footer, include a single `Model:` line with the explicit model string (e.g. `GPT-4`). When writing commits from the CLI, use multiple `-m` flags or a heredoc so newlines are real and not escaped `\\n`. Example:
+9. **Commit Message Format**: Keep lines under 72 characters. Use a short subject line, then include an explanatory paragraph when the change is non-trivial or benefits from context; use judgement for small changes. In the footer, include a single `Model:` line with the explicit model string (e.g. `GPT-4`). All commits must be created via a *quoted heredoc* passed to `git commit -F -` so newlines are real and never escaped. Example:
    ```bash
-   git commit -m "Subject line" \
-     -m $'Explanation with a paragraph that spans\\nmultiple lines without literal \\\\n escapes.' \
-     -m "Model: GPT-5"
+   git commit -F - <<'EOF'
+   Subject line
+
+   Explanation wrapped to 72 columns.
+
+   Model: GPT-5
+   EOF
    ```
    ```
    Subject line
@@ -187,10 +191,18 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
   ```bash
   grep -n "^\$winsert" path/to/Internal.dump-simpl
   ```
+- **Lookup APIs quickly**: Use Hoogle on the CLI when confirming function availability or signatures.
+  ```bash
+  hoogle "indexSmallArray##"
+  ```
 - **Inspect strictness and unboxing**: Look at the `Str=` and `Arity=` signatures in the dump.
 - **Read specific sections**: Use `sed` to extract lines around a match.
   ```bash
   sed -n '5000,5100p' path/to/Internal.dump-simpl
+  ```
+- **Check open review threads**: Use the PR comments API for line-level feedback and resolution status.
+  ```bash
+  gh api repos/<owner>/<repo>/pulls/<pr>/comments
   ```
 
 ### Performance Tips
@@ -231,4 +243,30 @@ Note: `cabal.project.local` is expected to be untracked when enabling Core dumps
   expected for post-rename verification.
 - Before building a new PR on top of `master`, check what was just merged (e.g., `git log origin/master..branch`) to avoid cherry-picking already-merged commits and unnecessary conflicts.
 - To find line-level review comments quickly, use `gh api repos/<owner>/<repo>/pulls/<pr>/comments`; review bodies can be empty, so rely on the comments API for actionable items.
-- For PR replies, `gh pr comment <number> --body "<text>"` is the quick path; line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.
+- For PR replies, prefer `--body-file` (or a quoted heredoc piped to `--body-file -`) so newlines render correctly. Line-level replies require `commit_id`, `path`, and `position` and are harder to post ad hoc.
+
+## Project-Specific Notes That Improve Efficiency
+
+- Test code is now split into modules.
+- `test/MapProperties.hs` holds map operation properties and exports `word64MapTests` plus `K`/`fromKListInternal`.
+- `test/MapInstances.hs` holds instance law tests and exports `instanceTests`.
+- `test/MapStrictness.hs` holds strictness properties for `Map.Strict` and imports tooling from `StrictnessTooling`.
+- `test/StrictnessTooling.hs` is only for tooling utilities (`isWhnfInt`, `mkThunk`, and their property tests).
+- `localOption` comes from `Test.Tasty`, not `Test.Tasty.QuickCheck`. Keep imports accordingly in test runners.
+- `isWhnfInt` uses `noThunks` and returns `False` on exceptions; `mkThunk` is exported from `StrictnessTooling` and uses `GHC.Exts.lazy`.
+- When enabling Core dumps for a specific test module, `cabal build` may not emit `.dump-simpl` for test-only modules; using `cabal exec -- ghc -ddump-simpl -ddump-to-file -package amt-word64 test/Module.hs` generates dumps reliably.
+- Shared test utilities live in `test/TestUtils.hs`. Use `kListToLazyMap` and `toSortedKList` for K-list conversions instead of duplicating helpers.
+- For `MapStrictness`, prioritize map-producing exports from
+  `Amt.Word64.Map.Strict`; predicates/lookups/folds don’t need WHNF-map
+  result checks.
+- In strictness properties, avoid over-shaping random inputs unless needed for
+  determinism; pre-inserting keys just to force overlap usually adds noise.
+- `mergeWithKey` strictness properties should use non-trivial unmatched-branch
+  handlers (e.g. `mapMaybe`/`filter`) instead of `id`, while still relying on
+  randomized inputs.
+- Efficient strict wrapper patterns in `Strict`: use `alter` for
+  insert/update-style APIs and force `Just` payloads; use `mergeWithKey` for
+  union/intersection-style APIs and force overlap results; use
+  `mapMaybeWithKey`/`mapEitherWithKey` wrappers to force transformed values.
+- If you compile ad hoc probes with `cabal exec -- ghc`, pass an explicit
+  temporary output directory to avoid leaving `.hi`/`.o` files in `test/`.

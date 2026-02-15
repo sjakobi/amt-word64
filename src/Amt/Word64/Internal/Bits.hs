@@ -40,7 +40,14 @@ The array index is the position in the compact 'SmallArray' for this slot.
 Construct with 'index' when the array index is needed regardless of presence.
 Otherwise it is more efficient to use 'indexIfSlotOccupied'.
 -}
-data Index = Index !Bitmap !Int !SlotState
+data Index = Index
+  { indexBit :: !Bitmap
+  -- ^ Singleton bitmap bit for the queried slot.
+  , indexArrayIndex :: !Int
+  -- ^ Position in the compact child array for this slot.
+  , indexSlotState :: !SlotState
+  -- ^ Whether the queried slot is occupied.
+  }
 
 -- | Is the slot for the given subkey empty or occupied?
 data SlotState = SlotEmpty | SlotOccupied

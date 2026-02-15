@@ -28,18 +28,21 @@ import GHC.Exts
   , (>=#)
   )
 
+-- | A 'Bitmap' records which slots of a 'Branch' node are empty or occupied.
 newtype Bitmap = BM Word64
   deriving (Eq)
 
-{- | Bitmap query result: bit mask for the current slot, compact array index,
-and whether the bit is present.
+{- | Bitmap query result: bit mask for the current subkey/slot, compact array index,
+and whether the slot is occupied.
 
 The array index is the position in the compact 'SmallArray' for this slot.
+
 Construct with 'index' when the array index is needed regardless of presence.
+Otherwise it is more efficient to use 'indexIfSlotOccupied'.
 -}
 data Index = Index !Bitmap !Int !SlotState
 
--- | Does the Bitmap contain the slot for the Word64 at the given Shift?
+-- | Is the slot for the given subkey empty or occupied?
 data SlotState = SlotEmpty | SlotOccupied
 
 -- | Unlifted shift counter in multiples of 'bitsPerLevel'.

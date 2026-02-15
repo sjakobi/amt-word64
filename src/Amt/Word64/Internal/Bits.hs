@@ -4,9 +4,11 @@
 module Amt.Word64.Internal.Bits
   ( Bitmap (..)
   , Index (..)
-  , BitMatch (..)
+  , SlotState (..)
   , Shift
   , ShiftBox (..)
+  , bitsPerLevel
+  , subkeyMask
   , shiftToInt
   , nextShift
   , shiftGE64
@@ -14,7 +16,7 @@ module Amt.Word64.Internal.Bits
   , lowBit
   , clearLowBit
   , index
-  , indexMatch
+  , indexIfSlotOccupied
   ) where
 
 import Data.Bits hiding (bit, shift)
@@ -26,22 +28,39 @@ import GHC.Exts
   , (>=#)
   )
 
+-- | A 'Bitmap' records which slots of a 'Branch' node are empty or occupied.
 newtype Bitmap = BM Word64
   deriving (Eq)
 
-{- | Bitmap query result: bit mask for the current slot, compact array index,
-and whether the bit is present.
+{- | Bitmap query result.
 
-The array index is the position in the compact 'SmallArray' for this slot.
 Construct with 'index' when the array index is needed regardless of presence.
+Otherwise it is more efficient to use 'indexIfSlotOccupied'.
 -}
-data Index = Index !Bitmap !Int !BitMatch
+data Index = Index
+  { indexBit :: !Bitmap
+  -- ^ Singleton bitmap bit for the queried slot.
+  , indexArrayIndex :: !Int
+  -- ^ Position in the compact child array for this slot.
+  , indexSlotState :: !SlotState
+  -- ^ Whether the queried slot is occupied.
+  }
 
--- | Does the Bitmap contain the Word64 at the given Shift?
-data BitMatch = NoMatch | Match
+-- | Is the slot for the given subkey empty or occupied?
+data SlotState = SlotEmpty | SlotOccupied
 
--- | Unlifted shift counter in multiples of 6 bits.
+-- | Unlifted shift counter in multiples of 'bitsPerLevel'.
 type Shift = Int#
+
+-- | Number of bits consumed per level.
+bitsPerLevel :: Int
+bitsPerLevel = 6
+{-# INLINE bitsPerLevel #-}
+
+-- | Mask for extracting the subkey/slot from a 'Word64' key.
+subkeyMask :: Word64
+subkeyMask = (1 `unsafeShiftL` bitsPerLevel) - 1
+{-# INLINE subkeyMask #-}
 
 -- | Boxed shift value for diagnostics and 'InvariantViolation' payloads.
 newtype ShiftBox = ShiftBox Int
@@ -52,7 +71,8 @@ shiftToInt s = I# s
 {-# INLINE shiftToInt #-}
 
 nextShift :: Shift -> Shift
-nextShift s = s +# 6#
+nextShift s = case bitsPerLevel of
+  I# b -> s +# b
 {-# INLINE nextShift #-}
 
 shiftGE64 :: Shift -> Bool
@@ -81,28 +101,30 @@ clearLowBit :: Word64 -> Word64
 clearLowBit w = w .&. (w - 1)
 {-# INLINE clearLowBit #-}
 
-{- | Compute the bitmap bit for @k@ at @shift@ and return the 'Index'.
+{- | Given a 'Shift' representing the level of the tree, a 'Word64' key and the
+'Bitmap' of a 'Branch' node, compute 'Index' into that node.
 
-Use this when the array index is needed regardless of presence.
+When the array index is only needed if the slot is occupied, use
+'indexIfSlotOccupied' instead.
 -}
 index :: Shift -> Word64 -> Bitmap -> Index
 index shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
-      bit = 1 `unsafeShiftL` ix
+  let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
+      bit = 1 `unsafeShiftL` slot
       i = popCount (bm .&. (bit - 1))
-      match = if bm .&. bit == 0 then NoMatch else Match
+      match = if bm .&. bit == 0 then SlotEmpty else SlotOccupied
    in Index (BM bit) i match
 {-# INLINE index #-}
 
-{- | Like 'index', but only returns the array index when the bit is present.
+{- | Like 'index', but only returns the array index when the slot is occupied.
 
 This avoids a 'popCount' when the lookup misses.
 -}
-indexMatch :: Shift -> Word64 -> Bitmap -> Maybe Int
-indexMatch shift !k (BM bm) =
-  let ix = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. 0x3f)
-      bit = 1 `unsafeShiftL` ix
+indexIfSlotOccupied :: Shift -> Word64 -> Bitmap -> Maybe Int
+indexIfSlotOccupied shift !k (BM bm) =
+  let slot = fromIntegral ((k `unsafeShiftR` shiftToInt shift) .&. subkeyMask)
+      bit = 1 `unsafeShiftL` slot
    in if bm .&. bit == 0
         then Nothing
         else Just (popCount (bm .&. (bit - 1)))
-{-# INLINE indexMatch #-}
+{-# INLINE indexIfSlotOccupied #-}

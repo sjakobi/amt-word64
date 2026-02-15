@@ -36,14 +36,14 @@ module Amt.Word64.Set.Internal
   ) where
 
 import Amt.Word64.Internal.Bits
-  ( BitMatch (..)
-  , Bitmap (..)
+  ( Bitmap (..)
   , Index (..)
   , Shift
   , ShiftBox (..)
+  , SlotState (..)
   , clearLowBit
   , index
-  , indexMatch
+  , indexIfSlotOccupied
   , lowBit
   , nextShift
   , shiftGE64
@@ -271,7 +271,7 @@ memberAtShift# shift k = go shift
           1# -> True
           _ -> False
   go s (Branch (BM bm) ary) =
-    case indexMatch s (W64# k) (BM bm) of
+    case indexIfSlotOccupied s (W64# k) (BM bm) of
       Nothing -> False
       Just i -> go (nextShift s) (indexSmallArray ary i)
 
@@ -296,11 +296,11 @@ insert !k m = case m of
     | otherwise -> two 0# k k'
   Branch (BM bm) ary ->
     case index 0# k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift 0#) k child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k) ary)
 
 -- | Unsafe insert that mutates arrays in-place under the hood.
@@ -317,11 +317,11 @@ insertAtShift s !k m = case m of
     | otherwise -> two s k k'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertAtShift (nextShift s) k child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k) ary)
 
 -- | Unsafe insert using in-place updates. Expects a non-empty root.
@@ -332,12 +332,12 @@ insertAtShiftUnsafe s !k m = case m of
     | otherwise -> pure (two s k k')
   branch@(Branch (BM bm) ary) ->
     case index s k (BM bm) of
-      Index _ i Match -> do
+      Index _ i SlotOccupied -> do
         let child = indexSmallArray ary i
         newChild <- insertAtShiftUnsafe (nextShift s) k child
         _ <- updateAtUnsafe i newChild ary
         pure branch
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         pure (Branch (BM (bm .|. bit)) (insertAt i (Leaf k) ary))
 
 -- | Only valid for internal nodes.
@@ -348,11 +348,11 @@ insertIfNotExistsAtShift s !k m = case m of
     | otherwise -> two s k k'
   Branch (BM bm) ary ->
     case index s k (BM bm) of
-      Index _ i Match ->
+      Index _ i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = insertIfNotExistsAtShift (nextShift s) k child
          in Branch (BM bm) (updateAt i newChild ary)
-      Index (BM bit) i NoMatch ->
+      Index (BM bit) i SlotEmpty ->
         Branch (BM (bm .|. bit)) (insertAt i (Leaf k) ary)
 
 two :: Shift -> Word64 -> Word64 -> Word64Set
@@ -382,8 +382,8 @@ deleteAtShift shift !k m = go shift m
   go _ leaf@(Leaf _) = leaf
   go s (Branch (BM bm) ary) =
     case index s k (BM bm) of
-      Index _ _ NoMatch -> Branch (BM bm) ary
-      Index (BM bit) i Match ->
+      Index _ _ SlotEmpty -> Branch (BM bm) ary
+      Index (BM bit) i SlotOccupied ->
         let child = indexSmallArray ary i
             newChild = go (nextShift s) child
          in if null newChild
